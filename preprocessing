@@ -1,7 +1,7 @@
 from sklearn.preprocessing import StandardScaler, LabelEncoder, LabelBinarizer
 import pandas as pd
 
-class PredictorPreprocessor:
+class Preprocessor:
     def __init__(self, model_type, scale_predictors = True):
         assert model_type in ["random_forest", "elastic_net", "lightgbm", "lightgbm_special", "xgboost"]
         self._model_type = model_type
