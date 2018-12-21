@@ -1,4 +1,12 @@
-class Model:
+import pandas as pd
+import xgboost as xgb
+import lightgbm as lgb
+
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import ElasticNet, ElasticNetCV
+
+
+class RegressionModel:
     def __init__(self, model_type, random_state, metric, model_params_dict = None):
         assert model_type in ["random_forest","elastic_net", "lightgbm", "lightgbm_special", "xgboost"]
         
@@ -121,34 +129,3 @@ class Model:
         grad = d / scale_sqrt
         hess = (1 / scale) / scale_sqrt
         return grad, hess
-
-def test():
-    from sklearn.model_selection import train_test_split
-    from sklearn.datasets import load_boston
-    from sklearn.metrics import r2_score
-    RANDOM_SEED =  46257
-    
-    boston = load_boston()
-    df = pd.DataFrame(data = boston["data"])
-    df.columns = ["var_{}".format(col) for col in df.columns]
-    df["target"] = boston["target"]
-    train_df, test_df = train_test_split(df, test_size = 0.2, random_state = RANDOM_SEED)
-    
-    attribute_cols_list = [col for col in df.columns if col != "target"]
-    y_cols_list = ["target"]
-    USE_WEIGHT_SAMPLES = False
-    categorical_vars_list = []
-    
-    for model_type in ["elastic_net", "random_forest", "xgboost", "lightgbm"]:
-        print("fitting baseline {} model".format(model_type))
-        model = Model(model_type = model_type, random_state = RANDOM_SEED,
-                      metric = "l2")
-        model.fit(X_train = train_df.loc[:,attribute_cols_list],
-                 y_train = train_df["target"])
-    
-        predictions = model.predict(X_test = test_df.loc[:,attribute_cols_list])
-        r2 = r2_score(test_df["target"], predictions)
-        print("R-Squared on test set predictions on boston dataset is {}".format(r2))
-
-if __name__ == "__main__":
-    test()

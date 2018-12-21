@@ -1,3 +1,6 @@
+import numpy as np
+import hyperopt
+
 model_params_space_dict = {
     "elastic_net":{
                     # adjusted the end of alpha to be 15 from 20
