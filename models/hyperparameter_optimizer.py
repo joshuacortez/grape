@@ -1,14 +1,14 @@
 class HyperparameterOptimizer:
     # uses bayesian optimization to optimize hyparmareters for machine learning models
     def __init__(self, model_type, X_train, y_train, y_colname, metric, random_state, train_valid_folds,
-                sample_weight = None, output_folder = "output/hyperparameter-tuning"):
+                sample_weight = None, output_folder = None):
         assert model_type in ["random_forest", "lightgbm", "elastic_net", "xgboost"]
         assert metric in ["l1", "l2"]
         
         self._model_type = model_type
         self._random_state = random_state
         self._y_colname = y_colname
-        self._train_valid_folds = train_valid_folds.split(X_train)
+        self._train_valid_folds = list(train_valid_folds.split(X_train))
         #self._train_valid_folds = train_valid_folds.make_train_valid_folds(X_train)
         self._sample_weight = sample_weight
         self._output_folder = output_folder
@@ -83,16 +83,9 @@ class HyperparameterOptimizer:
         
         run_time = timer() - start   
         
-        if self.num_iterations == 1:
-            with open(self.trial_summary_outfile, 'w') as file:
-                writer = csv.writer(file)
-                # Write the headers to the file
-                writer.writerow(['loss', 'params', 'num_iterations', 'train_time'])
-
-        # Write to the csv file ('a' means append)
-        of_connection = open(self.trial_summary_outfile, 'a')
-        writer = csv.writer(of_connection)
-        writer.writerow([loss, model_params, self.num_iterations, run_time])
+        headers = ['loss', 'params', 'num_iterations', 'train_time']
+        eval_vals = [loss, model_params, self.num_iterations, run_time]
+        self._dump_params(headers, eval_vals)
         
         # Dictionary with information for evaluation
         return {'loss': loss, 'params': model_params, 'num_iterations': self.num_iterations,
@@ -142,16 +135,9 @@ class HyperparameterOptimizer:
             
         run_time = timer() - start   
         
-        if self.num_iterations == 1:
-            with open(self.trial_summary_outfile, 'w') as file:
-                writer = csv.writer(file)
-                # Write the headers to the file
-                writer.writerow(['loss', 'params', 'num_iterations', 'train_time'])
-
-        # Write to the csv file ('a' means append)
-        of_connection = open(self.trial_summary_outfile, 'a')
-        writer = csv.writer(of_connection)
-        writer.writerow([loss, model_params, self.num_iterations, run_time])
+        headers = ['loss', 'params', 'num_iterations', 'train_time']
+        eval_vals = [loss, model_params, self.num_iterations, run_time]
+        self._dump_params(headers, eval_vals)
 
         # Dictionary with information for evaluation
         return {'loss': loss, 'params': model_params, 'num_iterations': self.num_iterations,
@@ -186,7 +172,7 @@ class HyperparameterOptimizer:
                 model_params[parameter_name] = int(model_params[parameter_name])
 
         start = timer()
-
+        
         # Perform cross validation
         cv_results = lgb.cv(params = model_params, train_set = self.d_train, num_boost_round = 10000, 
                             folds = self._train_valid_folds, early_stopping_rounds = 100, 
@@ -204,16 +190,9 @@ class HyperparameterOptimizer:
         # Boosting rounds that returned the best cv score
         num_boost_round = int(np.argmin(cv_results[metric_mean_name]) + 1)
 
-        if self.num_iterations == 1:
-            with open(self.trial_summary_outfile, 'w') as file:
-                writer = csv.writer(file)
-                # Write the headers to the file
-                writer.writerow(['loss', 'std_loss', 'params', 'num_iterations', 'estimators', 'train_time'])
-        
-        # Write to the csv file ('a' means append)
-        of_connection = open(self.trial_summary_outfile, 'a')
-        writer = csv.writer(of_connection)
-        writer.writerow([loss, std_loss, model_params, self.num_iterations, num_boost_round, run_time])
+        headers = ['loss', 'std_loss', 'params', 'num_iterations', 'num_boost_round', 'train_time']
+        eval_vals = [loss, std_loss, model_params, self.num_iterations, num_boost_round, run_time]
+        self._dump_params(headers, eval_vals)
     
         # Dictionary with information for evaluation
         return {'loss': loss, "std_loss":std_loss, 'params': model_params, 'num_iterations': self.num_iterations,
@@ -261,17 +240,10 @@ class HyperparameterOptimizer:
 
         # Boosting rounds that returned the best cv score
         num_boost_round = best_idx + 1
-
-        if self.num_iterations == 1:
-            with open(self.trial_summary_outfile, 'w') as file:
-                writer = csv.writer(file)
-                # Write the headers to the file
-                writer.writerow(['loss', 'std_loss', 'params', 'num_iterations', 'num_boost_round', 'train_time'])
         
-        # Write to the csv file ('a' means append)
-        of_connection = open(self.trial_summary_outfile, 'a')
-        writer = csv.writer(of_connection)
-        writer.writerow([loss, std_loss, model_params, self.num_iterations, num_boost_round, run_time])
+        headers = ['loss', 'std_loss', 'params', 'num_iterations', 'num_boost_round', 'train_time']
+        eval_vals = [loss, std_loss, model_params, self.num_iterations, num_boost_round, run_time]
+        self._dump_params(headers, eval_vals)
     
         # Dictionary with information for evaluation
         return {'loss': loss, "std_loss":std_loss, 'params': model_params, 'num_iterations': self.num_iterations,
@@ -289,12 +261,30 @@ class HyperparameterOptimizer:
         hess = (1 / scale) / scale_sqrt
         return grad, hess
     
+    def _dump_params(self, headers, eval_vals):
+        if self.trial_summary_outfile is not None:
+            if self.num_iterations == 1:
+                with open(self.trial_summary_outfile, 'w') as file:
+                    writer = csv.writer(file)
+                    # Write the headers to the file
+                    writer.writerow(headers)
+
+            # Write to the csv file ('a' means append)
+            with open(self.trial_summary_outfile, 'a') as file:
+                writer = csv.writer(file)
+                writer.writerow(eval_vals)
+            
+        eval_dict = {key:val for key,val in zip(headers,eval_vals)}
+        self.trial_runs.append(eval_dict)
+        
     def run_hyperparameter_tuning(self, parameter_space_dict, max_evals):
         # File to save first results
         timenow = str(datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
-        trial_summary_outfile = '{}/trial-summary_{}_{}_{}.csv'.format(self._output_folder, self._model_type, 
-                                                                       self._y_colname, timenow)
-        self.trial_summary_outfile = trial_summary_outfile
+        if self._output_folder is not None:
+            self.trial_summary_outfile = '{}/trial-summary_{}_{}_{}.csv'.format(self._output_folder, self._model_type, 
+                                                                           self._y_colname, timenow)
+        else:
+            self.trial_summary_outfile = None
         
         # Keep track of results
         # The Trials object will hold everything returned from the objective function in the .results attribute. 
@@ -316,20 +306,57 @@ class HyperparameterOptimizer:
         if self._model_type == "xgboost":
             objective = self._objective_xgb
             
+        # list that contains all the results of bayesian optimization
+        self.trial_runs = []
+            
         # Run optimization
         best = hyperopt.fmin(fn = objective, space = parameter_space_dict, algo = hyperopt.tpe.suggest, 
                     max_evals = max_evals, trials = bayes_trials, rstate = np.random.RandomState(self._random_state))
         
-        # save the trial results
-        with open(bayes_trials_outfile, 'w') as file:
-            json.dump(bayes_trials.results, file)
+        # save the trial results (don't do this yet, will fix after worked on checkpointing)
+        #with open(bayes_trials_outfile, 'w') as file:
+        #    json.dump(bayes_trials.results, file)
             
         print("{} evals of Bayesian optimization done".format(max_evals))
-        print("Summary file for every num_iterations can be found in {}".format(trial_summary_outfile))
-        print("Trial Results file (for checkpointing) can be find in {}".format(bayes_trials_outfile))
+        if self.trial_summary_outfile is not None:
+            print("Summary file for every num_iterations can be found in {}".format(self.trial_summary_outfile))
+        # don't do this yet, will fix after worked on checkpointing
+        #print("Trial Results file (for checkpointing) can be find in {}".format(bayes_trials_outfile))
+        
+        return self.trial_runs
+
         
 def test():
-    pass
+    from sklearn.model_selection import train_test_split
+    from sklearn.datasets import load_boston
+    RANDOM_SEED =  46257
+
+    boston = load_boston()
+    df = pd.DataFrame(data = boston["data"])
+    df.columns = ["var_{}".format(col) for col in df.columns]
+    df["target"] = boston["target"]
+    train_df, test_df = train_test_split(df, test_size = 0.2, random_state = RANDOM_SEED)
+    train_valid_folds = KFold(n_splits = 5, shuffle = True, random_state = RANDOM_SEED)
+
+    attribute_cols_list = [col for col in df.columns if col != "target"]
+    y_cols_list = ["target"]
+    USE_WEIGHT_SAMPLES = False
+    categorical_vars_list = []
+
+    for model_type in ["elastic_net", "random_forest", "lightgbm", "xgboost"]:
+        hpo = HyperparameterOptimizer(model_type = model_type, 
+                                      X_train = train_df.loc[:,attribute_cols_list],
+                                     y_train = train_df.loc[:,["target"]],
+                                     y_colname = "target",
+                                     metric = "l2",
+                                     random_state = RANDOM_SEED,
+                                      train_valid_folds = train_valid_folds,
+                                      output_folder = None
+                                     )
+        print(model_type)
+        results = hpo.run_hyperparameter_tuning(parameter_space_dict = model_params_space_dict[model_type], max_evals = 10)
+        results = pd.DataFrame(results)
+        print(results.head())
     
 if __name__ == "__main__":
     test()
