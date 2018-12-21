@@ -1,3 +1,5 @@
+from param_space import model_params_space_dict
+
 class HyperparameterOptimizer:
     # uses bayesian optimization to optimize hyparmareters for machine learning models
     def __init__(self, model_type, X_train, y_train, y_colname, metric, random_state, train_valid_folds,
