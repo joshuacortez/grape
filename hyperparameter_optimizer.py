@@ -17,12 +17,13 @@ import datetime
 from timeit import default_timer as timer
 from copy import copy
 
-from .param_space import parameter_space
+from param_space import parameter_space
 
 class HyperParameterOptimizer:
 
     def __init__(self, **kwargs):
         self._random_state = kwargs.get("random_state", None)
+        self.verbosity = kwargs.get("verbosity", 0)
 
     def _objective_random_forest(self, model_params):
         '''
@@ -37,7 +38,7 @@ class HyperParameterOptimizer:
             if param in model_params_.keys():
                 model_params_[param] = int(model_params_[param])
 
-        model = RandomForestRegressor(n_jobs = -1, random_state = self._random_state, **model_params)
+        model = RandomForestRegressor(n_jobs = -1, random_state = self._random_state, **model_params_)
 
         oob_score = model_params_.get("oob_score", False)
         if oob_score:
@@ -63,6 +64,10 @@ class HyperParameterOptimizer:
             loss = np.mean(cross_val_scores)*(-1)
         
         self.num_iterations += 1
+
+        if self.verbosity >= 2:
+            print("Finished Iteration ", self.num_iterations)
+
         run_time = timer() - start 
         return {
             'loss': loss, 
@@ -74,6 +79,8 @@ class HyperParameterOptimizer:
 
     def fit_optimize(self, model_, X_train, y_train, **kwargs):
         self._sample_weight = kwargs.get("sample_weight", None)
+        max_evals = kwargs.get("max_evals", 100)
+
         train_valid_folds = kwargs.get("train_valid_folds", None)
 
         bayes_trials = hyperopt.Trials()
@@ -83,6 +90,8 @@ class HyperParameterOptimizer:
         self._y_train = y_train
         if train_valid_folds is not None:
             self._train_valid_folds_x = list(train_valid_folds.split(X_train))
+        else:
+            self._train_valid_folds_x = None
 
         if model_._model_type == "random_forest":
             objective = self._objective_random_forest
@@ -91,5 +100,38 @@ class HyperParameterOptimizer:
                 self._scoring = "neg_mean_absolute_error"
             elif self._model._metric == "mse":
                 self._scoring = "neg_mean_squared_error"
+        
+        # TODO: implement other model types
 
         self.num_iterations = 0
+
+        self.best_params = hyperopt.fmin(
+            fn = objective,
+            space = parameter_space[self._model._model_type],
+            algo = hyperopt.tpe.suggest,
+            max_evals = max_evals,
+            trials = bayes_trials,
+            rstate = np.random.RandomState(self._random_state),
+        )
+
+        # return an optimized model
+        if model_._model_type == "random_forest":
+            for param in ["min_samples_split", "min_samples_leaf", "n_estimators"]:
+                if param in self.best_params.keys():
+                    self.best_params[param] = int(self.best_params[param])
+
+            best_model = RandomForestRegressor(
+                n_jobs = -1, 
+                random_state = self._random_state, 
+                **self.best_params
+            )
+            best_model.fit(
+                X = self._X_train, 
+                y = self._y_train, 
+                sample_weight = self._sample_weight
+            )
+        return best_model
+        
+        # TODO: implement other model types
+
+

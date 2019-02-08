@@ -6,12 +6,12 @@ from copy import copy
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import ElasticNet, ElasticNetCV
 
-from .param_space import parameter_space
-from .utils import _huber_approx_obj
+from param_space import parameter_space
+from utils import _huber_approx_obj
 
 class RegressionModel:
 
-    def __init__(self, model_type):
+    def __init__(self, model_type, **kwargs):
         '''
         Positional Arguements:
             model_type
