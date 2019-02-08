@@ -23,7 +23,8 @@ def main():
     feat_cols.remove("Transactions")
     feat_cols.remove("log_txn")
 
-    model = RegressionModel("random_forest")
+    # model = RegressionModel("random_forest")
+    model = RegressionModel("elastic_net")
     hpo = HyperParameterOptimizer(
         verbosity = 2
     )

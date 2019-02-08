@@ -34,3 +34,14 @@ def _huber_approx_obj(preds, dtrain):
     grad = d / scale_sqrt
     hess = (1 / scale) / scale_sqrt
     return grad, hess
+
+def get_elastic_net_l1_ratio(model_params):
+    penalty_type = model_params["l1_ratio"]["penalty_type"]
+    if penalty_type == "lasso":
+        l1_ratio = 1
+    elif penalty_type == "ridge":
+        l1_ratio = 0
+    else:
+        l1_ratio = model_params["l1_ratio"]["l1_ratio"]
+
+    return l1_ratio
