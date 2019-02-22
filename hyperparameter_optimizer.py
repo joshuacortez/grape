@@ -18,6 +18,7 @@ import datetime
 from timeit import default_timer as timer
 from copy import copy
 
+from regression_model import RegressionModel
 from param_space import parameter_space
 from utils import get_elastic_net_l1_ratio
 
@@ -118,6 +119,57 @@ class HyperParameterOptimizer:
             "status": hyperopt.STATUS_OK,
         }
 
+    def _objective_lightgbm(self, model_params):
+        start = timer()
+
+        model_params_ = copy(model_params)
+        model_params_["objective"] = self._model._metric
+
+        # conditional sampling from bayesian domain for the goss bossting type
+        if "boosting_type" in model_params_.keys():
+            subsample = model_params_['boosting_type'].get('subsample', 1.0)
+
+            model_params_['boosting_type'] = model_params_['boosting_type']['boosting_type']
+            model_params_['subsample'] = subsample
+
+        for param in ['num_leaves', 'subsample_for_bin', 'min_child_samples']:
+            if param in model_params_.keys():
+                model_params_[param] = int(model_params_[param])
+
+        cv_results = lgb.cv(
+            params = model_params_, 
+            train_set = self._d_train,
+            num_boost_round = 10000, 
+            folds = self._train_valid_folds_x, 
+            # nfold = 10,
+            early_stopping_rounds = 100, 
+            seed = self._random_state, 
+            fobj = None, 
+            feval = None
+        )
+
+        metric_mean_name = [key for key in cv_results.keys() if "-mean" in key][0]
+        metric_std_name = [key for key in cv_results.keys() if "-std" in key][0]
+
+        loss = np.min(cv_results[metric_mean_name])
+        std_loss = cv_results[metric_std_name][np.argmin(cv_results[metric_mean_name])]
+        num_boost_round = int(np.argmin(cv_results[metric_mean_name]) + 1)
+
+        self.num_iterations += 1
+
+        self._print_iter()
+
+        run_time = timer() - start 
+        return {
+            'loss': loss, 
+            "std_loss":std_loss,
+            'params': model_params_, 
+            "num_iterations": self.num_iterations,
+            'estimators': num_boost_round,
+            "train_time": run_time,
+            "status": hyperopt.STATUS_OK,
+        }
+
     def fit_optimize(self, model_, X_train, y_train, **kwargs):
         self._sample_weight = kwargs.get("sample_weight", None)
         max_evals = kwargs.get("max_evals", 100)
@@ -131,6 +183,15 @@ class HyperParameterOptimizer:
         self._y_train = y_train
         if train_valid_folds is not None:
             self._train_valid_folds_x = list(train_valid_folds.split(X_train))
+        elif model_._model_type in ["lightgbm", "lightgbm_special"]:
+            # NOTE: default splitter of lightgbm doesn't work
+                # providing my own default instead
+            default_splitter = KFold(
+                n_splits = 5, 
+                shuffle = True, 
+                random_state = self._random_state
+            )
+            self._train_valid_folds_x = list(default_splitter.split(X_train))
         else:
             self._train_valid_folds_x = None
 
@@ -150,6 +211,15 @@ class HyperParameterOptimizer:
                 self._scoring = "neg_mean_absolute_error"
             elif self._model._metric == "mse":
                 self._scoring = "neg_mean_squared_error"
+        elif model_._model_type in ["lightgbm", "lightgbm_special"]:
+            self._d_train = lgb.Dataset(
+                data = self._X_train, 
+                label = self._y_train, 
+                weight = self._sample_weight
+            )
+            
+            objective = self._objective_lightgbm
+        
         
         # TODO: implement other model types
 
@@ -165,6 +235,8 @@ class HyperParameterOptimizer:
         )
 
         # return an optimized model
+        # TODO: return grape RegressionModel object
+            # instead of some other class
         if model_._model_type == "random_forest":
             for param in ["min_samples_split", "min_samples_leaf", "n_estimators"]:
                 if param in self.best_params.keys():
@@ -192,6 +264,18 @@ class HyperParameterOptimizer:
             best_model.fit(
                 X = self._X_train, 
                 y = self._y_train, 
+            )
+        
+        elif model_._model_type in ["lightgbm", "lightgbm_special"]:
+            for param in ['num_leaves', 'subsample_for_bin', 'min_child_samples']:
+                if param in self.best_params.keys():
+                    self.best_params[param] = int(self.best_params[param])
+            
+            best_model = lgb.train(
+                params = self.best_params,
+                train_set = self._d_train, 
+                fobj = None,
+                feval = None
             )
 
         return best_model
