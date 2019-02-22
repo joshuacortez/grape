@@ -20,7 +20,7 @@ from copy import copy
 
 from regression_model import RegressionModel
 from param_space import parameter_space
-from utils import get_elastic_net_l1_ratio
+from utils import get_elastic_net_l1_ratio, _huber_approx_obj
 
 class HyperParameterOptimizer:
 
@@ -170,6 +170,60 @@ class HyperParameterOptimizer:
             "status": hyperopt.STATUS_OK,
         }
 
+    def _objective_xgboost(self, model_params):
+        start = timer()
+
+        model_params_ = copy(model_params)
+
+        if self._model._metric == "mae":
+            obj = _huber_approx_obj
+            metric = "mae"
+
+        elif self._model._metric == "mse":
+            model_params_["objective"] = "reg:linear"
+            obj = None
+            metric = "rmse"
+
+        for parameter_name in ['min_child_weight']:
+            if parameter_name in model_params_.keys():
+                model_params_[parameter_name] = int(model_params_[parameter_name])
+
+        model_params_["silent"] = 1
+
+        cv_results = xgb.cv(
+            params = model_params_, 
+            dtrain = self._d_train, 
+            num_boost_round = 100000, 
+            folds = self._train_valid_folds_x, 
+            early_stopping_rounds = 100, 
+            seed = self._random_state, 
+            obj = obj, 
+            metrics = metric
+        )
+
+        metric_mean_name = "test-{}-mean".format(metric)
+        metric_std_name = "test-{}-std".format(metric)
+
+        best_idx = cv_results[metric_mean_name].idxmin()
+        loss = cv_results.loc[best_idx,metric_mean_name]
+        std_loss = cv_results.loc[best_idx,metric_std_name]
+
+        num_boost_round = best_idx + 1
+
+        self.num_iterations += 1
+        self._print_iter()
+
+        run_time = timer() - start 
+        return {
+            'loss': loss, 
+            "std_loss":std_loss,
+            'params': model_params_, 
+            "num_iterations": self.num_iterations,
+            'estimators': num_boost_round,
+            "train_time": run_time,
+            "status": hyperopt.STATUS_OK,
+        }
+
     def fit_optimize(self, model_, X_train, y_train, **kwargs):
         self._sample_weight = kwargs.get("sample_weight", None)
         max_evals = kwargs.get("max_evals", 100)
@@ -218,8 +272,16 @@ class HyperParameterOptimizer:
                 weight = self._sample_weight
             )
             
+            # TODO: make lightgbm silent pls
             objective = self._objective_lightgbm
-        
+        elif model_._model_type == "xgboost":
+            self._d_train = d_train = xgb.DMatrix(
+                data = self._X_train, 
+                label = self._y_train, 
+                weight = self._sample_weight
+            )
+
+            objective = self._objective_xgboost
         
         # TODO: implement other model types
 
@@ -276,6 +338,28 @@ class HyperParameterOptimizer:
                 train_set = self._d_train, 
                 fobj = None,
                 feval = None
+            )
+
+        elif model_._model_type == "xgboost":
+            if self._model._metric == "mae":
+                obj = _huber_approx_obj
+                metric = "mae"
+            elif self._model._metric == "mse":
+                self.best_params["objective"] = "reg:linear"
+                obj = None
+                metric = "rmse"
+                
+            for parameter_name in ['min_child_weight']:
+                if parameter_name in self.best_params.keys():
+                    self.best_params[parameter_name] = int(self.best_params[parameter_name])
+
+            self.best_params["silent"] = 1
+            
+            best_model = xgb.train(
+                params = self.best_params, 
+                dtrain = self._d_train, 
+                obj = obj, 
+                num_boost_round = parameter_space.get("num_boost_round", 200)
             )
 
         return best_model

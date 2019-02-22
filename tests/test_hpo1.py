@@ -26,13 +26,10 @@ def main():
     feat_cols.remove("log_txn")
 
     # model = RegressionModel("random_forest")
-    model = RegressionModel("lightgbm")
+    model = RegressionModel("xgboost")
     hpo = HyperParameterOptimizer(
         verbosity = 2
     )
-
-    # print(df_train.loc[:, feat_cols].astype('float64').head())
-    print(df_train.columns)
 
     optimized_model = hpo.fit_optimize(
         model,
