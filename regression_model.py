@@ -9,6 +9,9 @@ from sklearn.linear_model import ElasticNet, ElasticNetCV
 from param_space import parameter_space
 from utils import _huber_approx_obj
 
+from lightgbm.basic import Booster as LightBooster
+from xgboost.core import Booster as XgBooster
+
 class RegressionModel:
 
     def __init__(self, model_type, **kwargs):
@@ -41,6 +44,46 @@ class RegressionModel:
         if model_type == "lightgbm_special":
             param_key = "lightgbm"
         self._param_space = copy(parameter_space[param_key])
+
+    @classmethod
+    def from_trained(cls, trained_model, **kwargs):
+        feature_names = kwargs.get("feature_names", None)
+
+        if isinstance(trained_model, RandomForestRegressor):
+            model_string = "random_forest"
+        elif isinstance(trained_model, ElasticNetCV) or isinstance(trained_model, ElasticNet):
+            model_string = "elastic_net"
+        elif isinstance(trained_model, LightBooster):
+            model_string = "lightgbm"
+        elif isinstance(trained_model, XgBooster):
+            model_string = "xgboost"
+        else:
+            return None
+        
+        regression_model = cls(model_string, **kwargs)
+        regression_model.model = trained_model
+
+        if model_string == "random_forest":
+            regression_model.feature_importance_df = pd.DataFrame(
+                data = {"feature_importance": trained_model.feature_importances_}, 
+                index = feature_names
+            )
+        elif model_string == "elastic_net":
+            regression_model.feature_importance_df = pd.DataFrame(
+                data = {"feature_importance": trained_model.coef_}, 
+                index = feature_names
+            )
+        elif model_string == "light_gbm":
+            regression_model.feature_importance_df = pd.DataFrame(
+                data = {"feature_importance": trained_model.feature_importance()}, 
+                index = feature_names
+            )
+        elif model_string == "xgboost":
+            regression_model.feature_importance_df = pd.DataFrame.from_dict(
+                {"feature_importance": trained_model.get_score(importance_type = "gain")}
+            )
+
+        return regression_model
 
     def fit(self, X_train, y_train, **kwargs):
         '''

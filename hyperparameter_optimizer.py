@@ -374,7 +374,13 @@ class HyperParameterOptimizer:
                 num_boost_round = parameter_space.get("num_boost_round", 200)
             )
 
-        return best_model
+        # NOTE: return a regression model object
+        # not the class from whatever package
+        reg_model = RegressionModel.from_trained(
+            best_model,
+            feature_names = X_train.columns,
+        )
+        return reg_model
         
 
 
