@@ -226,6 +226,8 @@ class HyperParameterOptimizer:
 
     def fit_optimize(self, model_, X_train, y_train, **kwargs):
         self._sample_weight = kwargs.get("sample_weight", None)
+        self._override_params = kwargs.get("override_params", {})
+
         max_evals = kwargs.get("max_evals", 100)
 
         train_valid_folds = kwargs.get("train_valid_folds", None)
@@ -282,8 +284,6 @@ class HyperParameterOptimizer:
             )
 
             objective = self._objective_xgboost
-        
-        # TODO: implement other model types
 
         self.num_iterations = 0
 
@@ -304,10 +304,13 @@ class HyperParameterOptimizer:
                 if param in self.best_params.keys():
                     self.best_params[param] = int(self.best_params[param])
 
+            model_params = copy(self.best_params)
+            model_params.update(self._override_params)
+
             best_model = RandomForestRegressor(
                 n_jobs = -1, 
                 random_state = self._random_state, 
-                **self.best_params
+                **model_params
             )
             best_model.fit(
                 X = self._X_train, 
@@ -318,10 +321,13 @@ class HyperParameterOptimizer:
 
             self.best_params.pop("penalty_type")
 
+            model_params = copy(self.best_params)
+            model_params.update(self._override_params)
+
             best_model = ElasticNet(
                 max_iter = 10000,
                 random_state = self._random_state,
-                **self.best_params
+                **model_params
             )
             best_model.fit(
                 X = self._X_train, 
@@ -333,8 +339,11 @@ class HyperParameterOptimizer:
                 if param in self.best_params.keys():
                     self.best_params[param] = int(self.best_params[param])
             
+            model_params = copy(self.best_params)
+            model_params.update(self._override_params)
+
             best_model = lgb.train(
-                params = self.best_params,
+                params = model_params,
                 train_set = self._d_train, 
                 fobj = None,
                 feval = None
@@ -355,8 +364,11 @@ class HyperParameterOptimizer:
 
             self.best_params["silent"] = 1
             
+            model_params = copy(self.best_params)
+            model_params.update(self._override_params)
+
             best_model = xgb.train(
-                params = self.best_params, 
+                params = model_params, 
                 dtrain = self._d_train, 
                 obj = obj, 
                 num_boost_round = parameter_space.get("num_boost_round", 200)
@@ -364,6 +376,5 @@ class HyperParameterOptimizer:
 
         return best_model
         
-        # TODO: implement other model types
 
 

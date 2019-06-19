@@ -25,10 +25,13 @@ def main():
     feat_cols.remove("Transactions")
     feat_cols.remove("log_txn")
 
-    # model = RegressionModel("random_forest")
-    model = RegressionModel("xgboost")
+    model = RegressionModel("random_forest")
+    # model = RegressionModel("xgboost")
     hpo = HyperParameterOptimizer(
-        verbosity = 2
+        verbosity = 2,
+        override_params = {
+            "n_estimators": 100
+        },
     )
 
     optimized_model = hpo.fit_optimize(
