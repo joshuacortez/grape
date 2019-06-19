@@ -16,7 +16,9 @@ def main():
     df["log_txn"] = df["Transactions"].apply(np.log)
 
     df_train, df_test = train_test_split(
-        df, test_size = 0.2,
+        df, 
+        test_size = 0.2,
+        random_state = 2019,
     )
 
     feat_cols = list(df.columns)

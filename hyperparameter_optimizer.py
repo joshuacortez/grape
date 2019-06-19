@@ -25,7 +25,7 @@ from utils import get_elastic_net_l1_ratio, _huber_approx_obj
 class HyperParameterOptimizer:
 
     def __init__(self, **kwargs):
-        self._seed = int(kwargs.get("seed", None))
+        self._seed = kwargs.get("seed", None)
         self.verbosity = kwargs.get("verbosity", 0)
 
         self._random_state = np.random.RandomState(self._seed)
