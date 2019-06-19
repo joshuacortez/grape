@@ -11,7 +11,7 @@ import hyperopt
 
 import numpy as np
 from sklearn.linear_model import ElasticNet, ElasticNetCV
-from sklearn.model_selection import cross_val_score, KFold
+from sklearn.model_selection import cross_val_score, KFold, StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 import datetime
@@ -25,8 +25,10 @@ from utils import get_elastic_net_l1_ratio, _huber_approx_obj
 class HyperParameterOptimizer:
 
     def __init__(self, **kwargs):
-        self._random_state = kwargs.get("random_state", None)
+        self._seed = int(kwargs.get("seed", None))
         self.verbosity = kwargs.get("verbosity", 0)
+
+        self._random_state = np.random.RandomState(self._seed)
 
     def _print_iter(self):
         if self.verbosity >= 2:
@@ -45,7 +47,11 @@ class HyperParameterOptimizer:
             if param in model_params_.keys():
                 model_params_[param] = int(model_params_[param])
 
-        model = RandomForestRegressor(n_jobs = -1, random_state = self._random_state, **model_params_)
+        model = RandomForestRegressor(
+            n_jobs = -1, 
+            random_state = self._random_state, 
+            **model_params_
+        )
 
         oob_score = model_params_.get("oob_score", False)
         if oob_score:
@@ -55,9 +61,15 @@ class HyperParameterOptimizer:
                 sample_weight = self._sample_weight
             )
             if self._model._metric == "mae":
-                loss = mean_absolute_error(y_true = self._y_train, y_pred = model.oob_prediction_)
+                loss = mean_absolute_error(
+                    y_true = self._y_train, 
+                    y_pred = model.oob_prediction_
+                )
             if self._model._metric == "mse":
-                loss = mean_squared_error(y_true = self._y_train, y_pred = model.oob_prediction_)
+                loss = mean_squared_error(
+                    y_true = self._y_train, 
+                    y_pred = model.oob_prediction_
+                )
         else:
             cross_val_scores = cross_val_score(
                 estimator = model,
@@ -196,7 +208,7 @@ class HyperParameterOptimizer:
             num_boost_round = 100000, 
             folds = self._train_valid_folds_x, 
             early_stopping_rounds = 100, 
-            seed = self._random_state, 
+            seed = self._seed, 
             obj = obj, 
             metrics = metric
         )
@@ -249,7 +261,14 @@ class HyperParameterOptimizer:
             )
             self._train_valid_folds_x = list(default_splitter.split(X_train))
         else:
-            self._train_valid_folds_x = None
+            default_splitter = KFold(
+                n_splits = 5, 
+                shuffle = True, 
+                random_state = self._random_state
+            )
+            self._train_valid_folds_x = list(default_splitter.split(X_train))
+
+        model_params = copy(parameter_space[self._model._model_type])
 
         if model_._model_type == "random_forest":
             objective = self._objective_random_forest
@@ -258,6 +277,9 @@ class HyperParameterOptimizer:
                 self._scoring = "neg_mean_absolute_error"
             elif self._model._metric == "mse":
                 self._scoring = "neg_mean_squared_error"
+
+            # model_params["random_state"] = self._random_state
+
         elif model_._model_type == "elastic_net":
             # TODO: just use ElasticNetCV instead of hyperopt.fmin()
 
@@ -285,15 +307,17 @@ class HyperParameterOptimizer:
 
             objective = self._objective_xgboost
 
+            # model_params["seed"] = self._seed
+
         self.num_iterations = 0
 
         self.best_params = hyperopt.fmin(
             fn = objective,
-            space = parameter_space[self._model._model_type],
+            space = model_params,
             algo = hyperopt.tpe.suggest,
             max_evals = max_evals,
             trials = bayes_trials,
-            rstate = np.random.RandomState(self._random_state),
+            rstate = self._random_state,
         )
 
         # return an optimized model

@@ -73,7 +73,7 @@ class RegressionModel:
                 data = {"feature_importance": trained_model.coef_}, 
                 index = feature_names
             )
-        elif model_string == "light_gbm":
+        elif model_string == "lightgbm":
             regression_model.feature_importance_df = pd.DataFrame(
                 data = {"feature_importance": trained_model.feature_importance()}, 
                 index = feature_names

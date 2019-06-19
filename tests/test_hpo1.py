@@ -9,8 +9,6 @@ sys.path.append("..")
 from regression_model import RegressionModel
 from hyperparameter_optimizer import HyperParameterOptimizer
 
-RANDOM_SEED = 2019
-
 def main():
 
     # get sample data from ATM analysis
@@ -26,22 +24,27 @@ def main():
     feat_cols.remove("log_txn")
 
     # model = RegressionModel("random_forest")
+    # model = RegressionModel("elastic_net")
+    # model = RegressionModel("lightgbm")
     model = RegressionModel("xgboost")
     hpo = HyperParameterOptimizer(
         verbosity = 2,
         override_params = {
             "n_estimators": 100
         },
+        seed = 2019,
     )
 
     optimized_model = hpo.fit_optimize(
         model,
         df_train.loc[:, feat_cols].astype('float64'),
         df_train.loc[:, "log_txn"].astype('float64'),
-        max_evals = 20,
+        max_evals = 10,
     )
 
     print(type(optimized_model))
+    print(optimized_model.feature_importance_df)
 
 if __name__ == "__main__":
+    main()
     main()
