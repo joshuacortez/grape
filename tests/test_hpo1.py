@@ -3,11 +3,13 @@ import sys
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split, KFold
 
 sys.path.append("..")
 from regression_model import RegressionModel
 from hyperparameter_optimizer import HyperParameterOptimizer
+from diagnostics import HPODiagnoser
 
 def main():
 
@@ -31,6 +33,7 @@ def main():
     model = RegressionModel("xgboost")
     hpo = HyperParameterOptimizer(
         verbosity = 2,
+        diagnose_optimization = True,
         override_params = {
             "n_estimators": 100
         },
@@ -41,12 +44,24 @@ def main():
         model,
         df_train.loc[:, feat_cols].astype('float64'),
         df_train.loc[:, "log_txn"].astype('float64'),
-        max_evals = 10,
+        max_evals = 5,
     )
 
-    print(type(optimized_model))
-    print(optimized_model.feature_importance_df)
+    # print(type(optimized_model))
+    # print(optimized_model.feature_importance_df)
+
+    # diagnostics
+
+    diagnoser = HPODiagnoser(hpo)
+
+    print(diagnoser.get_hyperparam_summary())
+    fig, ax = diagnoser.plot_bayes_hyperparam_density("gamma")
+
+    plt.close()
+
+    fig, ax = diagnoser.plot_param_over_iterations("gamma")
+    plt.show()
 
 if __name__ == "__main__":
     main()
-    main()
+    # main()

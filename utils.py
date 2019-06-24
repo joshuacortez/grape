@@ -1,3 +1,19 @@
+import ast
+
+def str_to_dict(x):
+    if type(x) == str:
+        x = ast.literal_eval(x)
+    return x.copy()
+
+def linear_penalty_type(l1_ratio):
+    if l1_ratio == 1:
+        penalty_type = "lasso"
+    elif l1_ratio == 0:
+        penalty_type = "ridge"
+    else:
+        penalty_type = "elastic_net"
+    return penalty_type
+
 def get_sample_weight(samples, metric):
     '''
     Positional Arguements:

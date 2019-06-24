@@ -24,12 +24,10 @@ from utils import get_elastic_net_l1_ratio, _huber_approx_obj
 
 class HyperParameterOptimizer:
 
-
     def __init__(self, **kwargs):
         self._seed = kwargs.get("seed", None)
         self.verbosity = kwargs.get("verbosity", 0)
-        self.diagnose_hyperparam_optim = kwargs.get("diagnose_hyperparam_optim",False)
-        self.hyperparam_optim_summary = []
+        self.diagnose_optimization = kwargs.get("diagnose_optimization", True)
 
         self._random_state = np.random.RandomState(self._seed)
 
@@ -98,8 +96,8 @@ class HyperParameterOptimizer:
                 "train_time": run_time
             }
 
-        if self.diagnose_hyperparam_optim:
-            self.hyperparam_optim_summary.append(output.copy())
+        if self.diagnose_optimization:
+            self.optimization_summary.append(output.copy())
 
         output["status"] = hyperopt.STATUS_OK
 
@@ -141,8 +139,8 @@ class HyperParameterOptimizer:
             "train_time": run_time,
         }
 
-        if self.diagnose_hyperparam_optim:
-            self.hyperparam_optim_summary.append(output.copy())
+        if self.diagnose_optimization:
+            self.optimization_summary.append(output.copy())
 
         output["status"] = hyperopt.STATUS_OK
 
@@ -199,8 +197,8 @@ class HyperParameterOptimizer:
             "train_time": run_time,
         }
 
-        if self.diagnose_hyperparam_optim:
-            self.hyperparam_optim_summary.append(output.copy())
+        if self.diagnose_optimization:
+            self.optimization_summary.append(output.copy())
 
         output["status"] = hyperopt.STATUS_OK
 
@@ -260,8 +258,8 @@ class HyperParameterOptimizer:
             "train_time": run_time,
         }
 
-        if self.diagnose_hyperparam_optim:
-            self.hyperparam_optim_summary.append(output.copy())
+        if self.diagnose_optimization:
+            self.optimization_summary.append(output.copy())
 
         output["status"] = hyperopt.STATUS_OK
 
@@ -274,6 +272,8 @@ class HyperParameterOptimizer:
         max_evals = kwargs.get("max_evals", 100)
 
         train_valid_folds = kwargs.get("train_valid_folds", None)
+
+        self.optimization_summary = []
 
         bayes_trials = hyperopt.Trials()
 
