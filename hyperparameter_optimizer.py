@@ -24,9 +24,12 @@ from utils import get_elastic_net_l1_ratio, _huber_approx_obj
 
 class HyperParameterOptimizer:
 
+
     def __init__(self, **kwargs):
         self._seed = kwargs.get("seed", None)
         self.verbosity = kwargs.get("verbosity", 0)
+        self.diagnose_hyperparam_optim = kwargs.get("diagnose_hyperparam_optim",False)
+        self.hyperparam_optim_summary = []
 
         self._random_state = np.random.RandomState(self._seed)
 
@@ -87,13 +90,20 @@ class HyperParameterOptimizer:
         self._print_iter()
 
         run_time = timer() - start 
-        return {
-            'loss': loss, 
-            'params': model_params_, 
-            "num_iterations": self.num_iterations, 
-            "train_time": run_time,
-            "status": hyperopt.STATUS_OK,
-        }
+
+        output =  {
+                'loss': loss, 
+                'params': model_params_, 
+                "num_iterations": self.num_iterations, 
+                "train_time": run_time
+            }
+
+        if self.diagnose_hyperparam_optim:
+            self.hyperparam_optim_summary.append(output.copy())
+
+        output["status"] = hyperopt.STATUS_OK
+
+        return output
 
     def _objective_elastic_net(self, model_params):
         start = timer()
@@ -123,13 +133,20 @@ class HyperParameterOptimizer:
         self._print_iter()
 
         run_time = timer() - start 
-        return {
+
+        output = {
             'loss': loss, 
             'params': model_params_, 
             "num_iterations": self.num_iterations, 
             "train_time": run_time,
-            "status": hyperopt.STATUS_OK,
         }
+
+        if self.diagnose_hyperparam_optim:
+            self.hyperparam_optim_summary.append(output.copy())
+
+        output["status"] = hyperopt.STATUS_OK
+
+        return output
 
     def _objective_lightgbm(self, model_params):
         start = timer()
@@ -172,15 +189,22 @@ class HyperParameterOptimizer:
         self._print_iter()
 
         run_time = timer() - start 
-        return {
+
+        output = {
             'loss': loss, 
             "std_loss":std_loss,
             'params': model_params_, 
             "num_iterations": self.num_iterations,
             'estimators': num_boost_round,
             "train_time": run_time,
-            "status": hyperopt.STATUS_OK,
         }
+
+        if self.diagnose_hyperparam_optim:
+            self.hyperparam_optim_summary.append(output.copy())
+
+        output["status"] = hyperopt.STATUS_OK
+
+        return output
 
     def _objective_xgboost(self, model_params):
         start = timer()
@@ -225,16 +249,23 @@ class HyperParameterOptimizer:
         self.num_iterations += 1
         self._print_iter()
 
-        run_time = timer() - start 
-        return {
+        run_time = timer() - start
+
+        output = {
             'loss': loss, 
             "std_loss":std_loss,
             'params': model_params_, 
             "num_iterations": self.num_iterations,
-            'estimators': num_boost_round,
+            'num_boost_round': num_boost_round,
             "train_time": run_time,
-            "status": hyperopt.STATUS_OK,
         }
+
+        if self.diagnose_hyperparam_optim:
+            self.hyperparam_optim_summary.append(output.copy())
+
+        output["status"] = hyperopt.STATUS_OK
+
+        return output
 
     def fit_optimize(self, model_, X_train, y_train, **kwargs):
         self._sample_weight = kwargs.get("sample_weight", None)
