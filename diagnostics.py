@@ -121,8 +121,57 @@ class HPODiagnoser:
         else:
             print("{} not found among hyperparameters in bayes_params_df".format(parameter_name))
 
-    def get_all_diagnostics(self, n_samples = 1000):
+    def plot_all_diagnostics(self, n_samples = 1000):
 
         figures = {} # {name: (fig, ax)}
 
+        figures["loss_over_iterations"] = self.plot_param_over_iterations("loss")
+
         # TODO: implement
+        if self._model_type == "elastic_net":
+            figures["alpha_over_iterations"] = self.plot_param_over_iterations(parameter_name = "alpha")
+            figures["alpha_density"] = self.plot_bayes_hyperparam_density(
+                parameter_name = "alpha", 
+                n_samples = n_samples
+            )
+
+
+            linear_hyperparam_df = self.get_hyperparam_summary()
+            linear_hyperparam_df["penalty_type"] = linear_hyperparam_df["l1_ratio"].apply(linear_penalty_type)
+            penalty_type_summary_df = linear_hyperparam_df.loc[:,["penalty_type","loss"]].groupby("penalty_type").agg([np.mean, np.std])
+
+            penalty_type_summary_df = penalty_type_summary_df["loss"]
+
+            hist_fig, hist_ax = plt.subplots()
+            elastic_net_only_df = linear_hyperparam_df.loc[linear_hyperparam_df["penalty_type"] == "elastic_net",:]
+            elastic_net_only_df["l1_ratio"].hist(ax = hist_ax)
+            figures["l1_ratio_histogram"] = (hist_fig, hist_ax)
+
+        elif self._model_type == "random_forest":
+            for parameter_name in ["n_estimators", "min_samples_split", 
+                                   "min_samples_leaf", "max_features"]:
+
+                figures[parameter_name + "_over_iterations"] = self.plot_param_over_iterations(parameter_name = parameter_name)
+                figures[parameter_name + "_density"] = self.plot_bayes_hyperparam_density(
+                    parameter_name = parameter_name,
+                    n_samples = n_samples
+                )
+
+        elif (self._model_type == "lightgbm") or (self._model_type == "lightgbm_special"):
+            for parameter_name in ["num_leaves", "learning_rate", "subsample_for_bin",
+                                  "min_child_samples", "reg_alpha", "reg_lambda", "colsample_bytree"]:
+                figures[parameter_name + "_over_iterations"] = self.plot_param_over_iterations(parameter_name = parameter_name)
+                figures[parameter_name + "_density"] = self.plot_bayes_hyperparam_density(
+                    parameter_name = parameter_name,
+                    n_samples = n_samples
+                )
+
+        elif self._model_type == "xgboost":
+            for parameter_name in ["min_child_weight","reg_lambda","colsample_bytree", "gamma"]:
+                figures[parameter_name + "_over_iterations"] = self.plot_param_over_iterations(parameter_name = parameter_name)
+                figures[parameter_name + "_density"] = self.plot_bayes_hyperparam_density(
+                    parameter_name = parameter_name,
+                    n_samples = n_samples
+                )
+
+        return figures

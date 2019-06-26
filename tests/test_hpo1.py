@@ -29,8 +29,8 @@ def main():
 
     # model = RegressionModel("random_forest")
     # model = RegressionModel("elastic_net")
-    # model = RegressionModel("lightgbm")
-    model = RegressionModel("xgboost")
+    model = RegressionModel("lightgbm")
+    # model = RegressionModel("xgboost")
     hpo = HyperParameterOptimizer(
         verbosity = 2,
         diagnose_optimization = True,
@@ -55,11 +55,14 @@ def main():
     diagnoser = HPODiagnoser(hpo)
 
     print(diagnoser.get_hyperparam_summary())
-    fig, ax = diagnoser.plot_bayes_hyperparam_density("gamma")
+    # fig, ax = diagnoser.plot_bayes_hyperparam_density("gamma")
 
-    plt.close()
+    # plt.close()
 
-    fig, ax = diagnoser.plot_param_over_iterations("gamma")
+    # fig, ax = diagnoser.plot_param_over_iterations("gamma")
+    # plt.close()
+
+    figures = diagnoser.plot_all_diagnostics()
     plt.show()
 
 if __name__ == "__main__":

@@ -117,7 +117,7 @@ class RegressionModel:
         if train_valid_folds is not None:
             self._param_space["n_jobs"] = -1
             cv = train_valid_folds.split(X_train)
-            self.model = ElasticNetCV(**self._param_space, cv = cv)
+            self.model = ElasticNetCV(cv = cv, **self._param_space)
         else:
             self.model = ElasticNet(**self._param_space)
         
