@@ -282,7 +282,7 @@ class HyperParameterOptimizer:
         self._y_train = y_train
         if train_valid_folds is not None:
             self._train_valid_folds_x = list(train_valid_folds.split(X_train))
-        elif model_._model_type in ["lightgbm", "lightgbm_special"]:
+        elif model_.model_type in ["lightgbm"]:
             # NOTE: default splitter of lightgbm doesn't work
                 # providing my own default instead
             default_splitter = KFold(
@@ -299,9 +299,9 @@ class HyperParameterOptimizer:
             )
             self._train_valid_folds_x = list(default_splitter.split(X_train))
 
-        model_params = copy(parameter_space[self._model._model_type])
+        model_params = copy(parameter_space[self._model.model_type])
 
-        if model_._model_type == "random_forest":
+        if model_.model_type == "random_forest":
             objective = self._objective_random_forest
 
             if self._model._metric == "mae":
@@ -311,7 +311,7 @@ class HyperParameterOptimizer:
 
             # model_params["random_state"] = self._random_state
 
-        elif model_._model_type == "elastic_net":
+        elif model_.model_type == "elastic_net":
             # TODO: just use ElasticNetCV instead of hyperopt.fmin()
 
             objective = self._objective_elastic_net
@@ -320,7 +320,7 @@ class HyperParameterOptimizer:
                 self._scoring = "neg_mean_absolute_error"
             elif self._model._metric == "mse":
                 self._scoring = "neg_mean_squared_error"
-        elif model_._model_type in ["lightgbm", "lightgbm_special"]:
+        elif model_.model_type in ["lightgbm", "lightgbm_special"]:
             self._d_train = lgb.Dataset(
                 data = self._X_train, 
                 label = self._y_train, 
@@ -329,7 +329,7 @@ class HyperParameterOptimizer:
             
             # TODO: make lightgbm silent pls
             objective = self._objective_lightgbm
-        elif model_._model_type == "xgboost":
+        elif model_.model_type == "xgboost":
             self._d_train = d_train = xgb.DMatrix(
                 data = self._X_train, 
                 label = self._y_train, 
@@ -354,7 +354,7 @@ class HyperParameterOptimizer:
         # return an optimized model
         # TODO: return grape RegressionModel object
             # instead of some other class
-        if model_._model_type == "random_forest":
+        if model_.model_type == "random_forest":
             for param in ["min_samples_split", "min_samples_leaf", "n_estimators"]:
                 if param in self.best_params.keys():
                     self.best_params[param] = int(self.best_params[param])
@@ -372,7 +372,7 @@ class HyperParameterOptimizer:
                 y = self._y_train, 
                 sample_weight = self._sample_weight
             )
-        elif model_._model_type == "elastic_net":
+        elif model_.model_type == "elastic_net":
 
             self.best_params.pop("penalty_type")
 
@@ -389,7 +389,7 @@ class HyperParameterOptimizer:
                 y = self._y_train, 
             )
         
-        elif model_._model_type in ["lightgbm", "lightgbm_special"]:
+        elif model_.model_type in ["lightgbm", "lightgbm_special"]:
             for param in ['num_leaves', 'subsample_for_bin', 'min_child_samples']:
                 if param in self.best_params.keys():
                     self.best_params[param] = int(self.best_params[param])
@@ -404,7 +404,7 @@ class HyperParameterOptimizer:
                 feval = None
             )
 
-        elif model_._model_type == "xgboost":
+        elif model_.model_type == "xgboost":
             if self._model._metric == "mae":
                 obj = _huber_approx_obj
                 metric = "mae"
@@ -432,8 +432,7 @@ class HyperParameterOptimizer:
         # NOTE: return a regression model object
         # not the class from whatever package
         reg_model = RegressionModel.from_trained(
-            best_model,
-            feature_names = X_train.columns,
+            best_model
         )
         return reg_model
         

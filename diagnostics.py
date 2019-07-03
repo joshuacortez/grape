@@ -5,14 +5,61 @@ import seaborn as sns
 import hyperopt
 import scipy.stats
 
+from sklearn.metrics import r2_score
+from sklearn.model_selection import KFold, cross_val_score, make_scorer
+
 from param_space import parameter_space
 from utils import str_to_dict, linear_penalty_type
+
+class ModelDiagnoser:
+    def __init__(self, model, 
+                     train_valid_folds = None,
+                     X_test = None,
+                     y_test = None):
+
+        self.model = model
+        self.X_test = X_test
+        self.y_test = y_test
+        self.train_valid_folds = train_valid_folds
+        assert hasattr(model, "X_train") and hasattr(model, "y_train"), "Need training set bound to model"
+
+    def get_model_diagnostics(self):
+
+        assert (self.X_test is None) == (self.y_test is None), "X_test and y_test arguments have to be both supplied or neither"
+
+        self.model_diagnostics = {}
+
+        training_preds = self.model.predict(X_train)
+
+        self.model_diagnostics["training_r_squared"] = r2_score(y_true = y_train, y_pred = training_preds)
+        if hasattr(self.model.model, "oob_score_"):
+            self.model_diagnostics["oob_r_squared"] = self.model.model.oob_score_
+
+        if train_valid_folds is not None:
+            cv = train_valid_folds.split(X_train)
+            scoring = make_scorer(r2_score)
+            self.model_diagnostics["cv_r_squared"] = cross_val_score(
+                                                        estimator = self.model.model,
+                                                        X = self.model.X_train,
+                                                        y = self.model.y_yrain,
+                                                        cv = cv,
+                                                        scoring = scoring,
+                                                        n_jobs = -1
+                                                        )
+
+        if (X_test is not None) & (y_test is not None):
+            test_preds = self.model.predict(X_test)
+            self.model_diagnostics["test_r_squared"] = r2_score(y_true = y_test, y_pred = test_preds)
+    
+    def plot_actual_vs_predicted(self, X, y):
+        preds = self.model.model.predict(X)
+
 
 class HPODiagnoser:
 
     def __init__(self, hpo):
         self.hpo = hpo
-        self._model_type = self.hpo._model._model_type
+        self.model_type = self.hpo._model.model_type
 
         self.df_optimization_summary = pd.DataFrame(self.hpo.optimization_summary)
 
@@ -21,10 +68,10 @@ class HPODiagnoser:
         # get the parameter dictionary from the iteration with the lowest loss
         best_params_dict =  str_to_dict(self.df_optimization_summary.loc[min_loss_idx,"params"])
         
-        if self._model_type in ["lightgbm", "lightgbm_special"]:
+        if self.model_type in ["lightgbm", "lightgbm_special"]:
             # include number of boosting rounds from hyperparameter optimization
             best_params_dict["num_iterations"] = self.df_optimization_summary.loc[min_loss_idx,"estimators"]
-        if self._model_type == "xgboost":
+        if self.model_type == "xgboost":
             best_params_dict["num_boost_round"] = self.df_optimization_summary.loc[min_loss_idx,"num_boost_round"]
         self.best_params_dict_ = best_params_dict
         self.best_loss_ = self.df_optimization_summary.loc[min_loss_idx,"loss"]
@@ -51,7 +98,7 @@ class HPODiagnoser:
 
     def plot_bayes_hyperparam_density(self, parameter_name, n_samples = 1000):
         bayes_params_df = self.get_hyperparam_summary()
-        parameter_space_dict = parameter_space[self._model_type]
+        parameter_space_dict = parameter_space[self.model_type]
         if parameter_name in parameter_space_dict.keys():
         
             fig, ax = plt.subplots()
@@ -128,7 +175,7 @@ class HPODiagnoser:
         figures["loss_over_iterations"] = self.plot_param_over_iterations("loss")
 
         # TODO: implement
-        if self._model_type == "elastic_net":
+        if self.model_type == "elastic_net":
             figures["alpha_over_iterations"] = self.plot_param_over_iterations(parameter_name = "alpha")
             figures["alpha_density"] = self.plot_bayes_hyperparam_density(
                 parameter_name = "alpha", 
@@ -147,7 +194,7 @@ class HPODiagnoser:
             elastic_net_only_df["l1_ratio"].hist(ax = hist_ax)
             figures["l1_ratio_histogram"] = (hist_fig, hist_ax)
 
-        elif self._model_type == "random_forest":
+        elif self.model_type == "random_forest":
             for parameter_name in ["n_estimators", "min_samples_split", 
                                    "min_samples_leaf", "max_features"]:
 
@@ -157,7 +204,7 @@ class HPODiagnoser:
                     n_samples = n_samples
                 )
 
-        elif (self._model_type == "lightgbm") or (self._model_type == "lightgbm_special"):
+        elif (self.model_type == "lightgbm") or (self.model_type == "lightgbm_special"):
             for parameter_name in ["num_leaves", "learning_rate", "subsample_for_bin",
                                   "min_child_samples", "reg_alpha", "reg_lambda", "colsample_bytree"]:
                 figures[parameter_name + "_over_iterations"] = self.plot_param_over_iterations(parameter_name = parameter_name)
@@ -166,7 +213,7 @@ class HPODiagnoser:
                     n_samples = n_samples
                 )
 
-        elif self._model_type == "xgboost":
+        elif self.model_type == "xgboost":
             for parameter_name in ["min_child_weight","reg_lambda","colsample_bytree", "gamma"]:
                 figures[parameter_name + "_over_iterations"] = self.plot_param_over_iterations(parameter_name = parameter_name)
                 figures[parameter_name + "_density"] = self.plot_bayes_hyperparam_density(

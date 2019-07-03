@@ -30,6 +30,11 @@ parameter_space = {
         'reg_lambda': hyperopt.hp.uniform('reg_lambda', 0.0, 1.0),
         'colsample_bytree': hyperopt.hp.uniform('colsample_by_tree', 0.0, 1.0)
     },
+    "lightgbm_special":{
+        'min_child_samples': hyperopt.hp.quniform('min_child_samples', 2, 350, 2),
+        'reg_lambda': hyperopt.hp.uniform('reg_lambda', 0.0, 1.0),
+        'colsample_bytree': hyperopt.hp.uniform('colsample_by_tree', 0.0, 1.0)
+    },
     # NOTE: tuning xgboost
     # https://www.kaggle.com/c/santander-customer-satisfaction/discussion/20662
     "xgboost":{
