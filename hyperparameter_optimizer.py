@@ -27,7 +27,7 @@ class HyperParameterOptimizer:
     def __init__(self, **kwargs):
         self._seed = kwargs.get("seed", None)
         self.verbosity = kwargs.get("verbosity", 0)
-        self.diagnose_optimization = kwargs.get("diagnose_optimization", True)
+        self.save_hpo_iterations = kwargs.get("save_hpo_iterations", True)
 
         self._random_state = np.random.RandomState(self._seed)
 
@@ -43,7 +43,7 @@ class HyperParameterOptimizer:
 
         model_params_ = copy(model_params)
 
-        model_params_["criterion"] = self._model._metric
+        model_params_["criterion"] = self.model.metric
         for param in ["min_samples_split", "min_samples_leaf", "n_estimators"]:
             if param in model_params_.keys():
                 model_params_[param] = int(model_params_[param])
@@ -61,12 +61,12 @@ class HyperParameterOptimizer:
                 y = self._y_train, 
                 sample_weight = self._sample_weight
             )
-            if self._model._metric == "mae":
+            if self.model.metric == "mae":
                 loss = mean_absolute_error(
                     y_true = self._y_train, 
                     y_pred = model.oob_prediction_
                 )
-            if self._model._metric == "mse":
+            if self.model.metric == "mse":
                 loss = mean_squared_error(
                     y_true = self._y_train, 
                     y_pred = model.oob_prediction_
@@ -96,7 +96,7 @@ class HyperParameterOptimizer:
                 "train_time": run_time
             }
 
-        if self.diagnose_optimization:
+        if self.save_hpo_iterations:
             self.optimization_summary.append(output.copy())
 
         output["status"] = hyperopt.STATUS_OK
@@ -139,7 +139,7 @@ class HyperParameterOptimizer:
             "train_time": run_time,
         }
 
-        if self.diagnose_optimization:
+        if self.save_hpo_iterations:
             self.optimization_summary.append(output.copy())
 
         output["status"] = hyperopt.STATUS_OK
@@ -150,7 +150,7 @@ class HyperParameterOptimizer:
         start = timer()
 
         model_params_ = copy(model_params)
-        model_params_["objective"] = self._model._metric
+        model_params_["objective"] = self.model.metric
 
         # conditional sampling from bayesian domain for the goss bossting type
         if "boosting_type" in model_params_.keys():
@@ -197,7 +197,7 @@ class HyperParameterOptimizer:
             "train_time": run_time,
         }
 
-        if self.diagnose_optimization:
+        if self.save_hpo_iterations:
             self.optimization_summary.append(output.copy())
 
         output["status"] = hyperopt.STATUS_OK
@@ -209,11 +209,11 @@ class HyperParameterOptimizer:
 
         model_params_ = copy(model_params)
 
-        if self._model._metric == "mae":
+        if self.model.metric == "mae":
             obj = _huber_approx_obj
             metric = "mae"
 
-        elif self._model._metric == "mse":
+        elif self.model.metric == "mse":
             model_params_["objective"] = "reg:linear"
             obj = None
             metric = "rmse"
@@ -258,28 +258,32 @@ class HyperParameterOptimizer:
             "train_time": run_time,
         }
 
-        if self.diagnose_optimization:
+        if self.save_hpo_iterations:
             self.optimization_summary.append(output.copy())
 
         output["status"] = hyperopt.STATUS_OK
 
         return output
 
-    def fit_optimize(self, model_, X_train, y_train, **kwargs):
-        self._sample_weight = kwargs.get("sample_weight", None)
-        self._override_params = kwargs.get("override_params", {})
+    def fit_optimize(self, 
+                     model_, 
+                     train_valid_folds = None, 
+                     max_evals = 100,
+                     override_params = None,
+                     **kwargs):
+        #self._sample_weight = kwargs.get("sample_weight", None)
+        #self._override_params = kwargs.get("override_params", {})
 
-        max_evals = kwargs.get("max_evals", 100)
-
-        train_valid_folds = kwargs.get("train_valid_folds", None)
+        if override_params is None:
+            override_params = {}
 
         self.optimization_summary = []
 
         bayes_trials = hyperopt.Trials()
 
-        self._model = model_
-        self._X_train = X_train
-        self._y_train = y_train
+        self.model = model_
+        #self._X_train = X_train
+        #self._y_train = y_train
         if train_valid_folds is not None:
             self._train_valid_folds_x = list(train_valid_folds.split(X_train))
         elif model_.model_type in ["lightgbm"]:
@@ -299,14 +303,14 @@ class HyperParameterOptimizer:
             )
             self._train_valid_folds_x = list(default_splitter.split(X_train))
 
-        model_params = copy(parameter_space[self._model.model_type])
+        model_params = copy(parameter_space[self.model.model_type])
 
         if model_.model_type == "random_forest":
             objective = self._objective_random_forest
 
-            if self._model._metric == "mae":
+            if self.model.metric == "mae":
                 self._scoring = "neg_mean_absolute_error"
-            elif self._model._metric == "mse":
+            elif self.model.metric == "mse":
                 self._scoring = "neg_mean_squared_error"
 
             # model_params["random_state"] = self._random_state
@@ -316,24 +320,24 @@ class HyperParameterOptimizer:
 
             objective = self._objective_elastic_net
             
-            if self._model._metric == "mae":
+            if self.model.metric == "mae":
                 self._scoring = "neg_mean_absolute_error"
-            elif self._model._metric == "mse":
+            elif self.model.metric == "mse":
                 self._scoring = "neg_mean_squared_error"
         elif model_.model_type in ["lightgbm", "lightgbm_special"]:
             self._d_train = lgb.Dataset(
-                data = self._X_train, 
-                label = self._y_train, 
-                weight = self._sample_weight
+                data = model_.X_train, 
+                label = model_.y_train, 
+                weight = model_.sample_weight
             )
             
             # TODO: make lightgbm silent pls
             objective = self._objective_lightgbm
         elif model_.model_type == "xgboost":
             self._d_train = d_train = xgb.DMatrix(
-                data = self._X_train, 
-                label = self._y_train, 
-                weight = self._sample_weight
+                data = model_.X_train, 
+                label = model_.y_train, 
+                weight = model_.sample_weight
             )
 
             objective = self._objective_xgboost
@@ -351,90 +355,12 @@ class HyperParameterOptimizer:
             rstate = self._random_state,
         )
 
-        # return an optimized model
-        # TODO: return grape RegressionModel object
-            # instead of some other class
-        if model_.model_type == "random_forest":
-            for param in ["min_samples_split", "min_samples_leaf", "n_estimators"]:
-                if param in self.best_params.keys():
-                    self.best_params[param] = int(self.best_params[param])
+        # test override here
+        model_params = copy(self.best_params)
+        model_params.update(override_params)
+        self.model.fit(model_params = model_params)
 
-            model_params = copy(self.best_params)
-            model_params.update(self._override_params)
-
-            best_model = RandomForestRegressor(
-                n_jobs = -1, 
-                random_state = self._random_state, 
-                **model_params
-            )
-            best_model.fit(
-                X = self._X_train, 
-                y = self._y_train, 
-                sample_weight = self._sample_weight
-            )
-        elif model_.model_type == "elastic_net":
-
-            self.best_params.pop("penalty_type")
-
-            model_params = copy(self.best_params)
-            model_params.update(self._override_params)
-
-            best_model = ElasticNet(
-                max_iter = 10000,
-                random_state = self._random_state,
-                **model_params
-            )
-            best_model.fit(
-                X = self._X_train, 
-                y = self._y_train, 
-            )
-        
-        elif model_.model_type in ["lightgbm", "lightgbm_special"]:
-            for param in ['num_leaves', 'subsample_for_bin', 'min_child_samples']:
-                if param in self.best_params.keys():
-                    self.best_params[param] = int(self.best_params[param])
-            
-            model_params = copy(self.best_params)
-            model_params.update(self._override_params)
-
-            best_model = lgb.train(
-                params = model_params,
-                train_set = self._d_train, 
-                fobj = None,
-                feval = None
-            )
-
-        elif model_.model_type == "xgboost":
-            if self._model._metric == "mae":
-                obj = _huber_approx_obj
-                metric = "mae"
-            elif self._model._metric == "mse":
-                self.best_params["objective"] = "reg:linear"
-                obj = None
-                metric = "rmse"
-                
-            for parameter_name in ['min_child_weight']:
-                if parameter_name in self.best_params.keys():
-                    self.best_params[parameter_name] = int(self.best_params[parameter_name])
-
-            self.best_params["silent"] = 1
-            
-            model_params = copy(self.best_params)
-            model_params.update(self._override_params)
-
-            best_model = xgb.train(
-                params = model_params, 
-                dtrain = self._d_train, 
-                obj = obj, 
-                num_boost_round = parameter_space.get("num_boost_round", 200)
-            )
-
-        # NOTE: return a regression model object
-        # not the class from whatever package
-        reg_model = RegressionModel.from_trained(
-            best_model
-        )
-        return reg_model
+        return self.model
         
 
 

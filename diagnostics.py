@@ -5,8 +5,8 @@ import seaborn as sns
 import hyperopt
 import scipy.stats
 
-from sklearn.metrics import r2_score
-from sklearn.model_selection import KFold, cross_val_score, make_scorer
+from sklearn.metrics import r2_score, make_scorer
+from sklearn.model_selection import KFold, cross_val_score
 
 from param_space import parameter_space
 from utils import str_to_dict, linear_penalty_type
@@ -23,33 +23,37 @@ class ModelDiagnoser:
         self.train_valid_folds = train_valid_folds
         assert hasattr(model, "X_train") and hasattr(model, "y_train"), "Need training set bound to model"
 
+        self.get_model_diagnostics()
+
     def get_model_diagnostics(self):
 
         assert (self.X_test is None) == (self.y_test is None), "X_test and y_test arguments have to be both supplied or neither"
 
         self.model_diagnostics = {}
 
-        training_preds = self.model.predict(X_train)
+        training_preds = self.model.predict(self.model.X_train)
 
-        self.model_diagnostics["training_r_squared"] = r2_score(y_true = y_train, y_pred = training_preds)
+        self.model_diagnostics["training_r_squared"] = r2_score(y_true = self.model.y_train, 
+                                                                y_pred = training_preds)
         if hasattr(self.model.model, "oob_score_"):
             self.model_diagnostics["oob_r_squared"] = self.model.model.oob_score_
 
-        if train_valid_folds is not None:
-            cv = train_valid_folds.split(X_train)
+        if self.train_valid_folds is not None:
+            cv = self.train_valid_folds.split(self.model.X_train)
             scoring = make_scorer(r2_score)
             self.model_diagnostics["cv_r_squared"] = cross_val_score(
-                                                        estimator = self.model.model,
+                                                        estimator = self.model,
                                                         X = self.model.X_train,
                                                         y = self.model.y_yrain,
                                                         cv = cv,
+                                                        fit_params = {"sample_weight":self.model.sample_weight},
                                                         scoring = scoring,
                                                         n_jobs = -1
                                                         )
 
-        if (X_test is not None) & (y_test is not None):
-            test_preds = self.model.predict(X_test)
-            self.model_diagnostics["test_r_squared"] = r2_score(y_true = y_test, y_pred = test_preds)
+        if (self.X_test is not None) & (self.y_test is not None):
+            test_preds = self.model.predict(self.X_test)
+            self.model_diagnostics["test_r_squared"] = r2_score(y_true = self.y_test, y_pred = test_preds)
     
     def plot_actual_vs_predicted(self, X, y):
         preds = self.model.model.predict(X)
