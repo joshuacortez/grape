@@ -27,15 +27,12 @@ from utils import get_elastic_net_l1_ratio, _huber_approx_obj, eval_func_is_high
 
 class HyperParameterOptimizer:
 
-    def __init__(self, eval_func_name = "mse", random_seed = 93375481, verbosity = 0):
-        self._random_seed = random_seed
+    def __init__(self, eval_func_name = "mse", verbosity = 0):
         self.verbosity = verbosity
 
         assert isinstance(eval_func_name,str), "eval_func_name should be a string"
         self.eval_func_name = eval_func_name
         self.eval_func_is_higher_better = eval_func_is_higher_better[self.eval_func_name]
-
-        self.random_seed = random_seed
 
     def _print_iter(self):
         if self.verbosity >= 2:
@@ -224,15 +221,12 @@ class HyperParameterOptimizer:
         bayes_trials = hyperopt.Trials()
 
         self.model = model
-        if self.model.random_seed is not None:
-            print("Overriding model's random seed of {} to {}".format(self.model.random_seed, self.random_seed))
-        self.model.random_seed = self.random_seed
 
         if train_valid_folds is None:
             train_valid_folds =  KFold(
                                     n_splits = 5, 
                                     shuffle = True, 
-                                    random_state = self.random_seed
+                                    random_state = self.model.random_seed
                                 )
 
         self._train_valid_folds = list(train_valid_folds.split(self.model.X_train))
@@ -267,7 +261,7 @@ class HyperParameterOptimizer:
 
         self.num_iterations = 0
 
-        random_state = np.random.RandomState(self.random_seed)
+        random_state = np.random.RandomState(self.model.random_seed)
 
         _ = hyperopt.fmin(
             fn = objective,
