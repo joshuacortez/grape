@@ -1,29 +1,22 @@
 import pandas as pd
-import xgboost as xgb
-import lightgbm as lgb
 from copy import copy
 
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import ElasticNet, ElasticNetCV
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
+import model_utils
 
-from utils import _huber_approx_obj
+from xgboost import DMatrix
 
-from lightgbm.basic import Booster as LightBooster
-from xgboost.core import Booster as XgBooster
+#todo: check xgboost sample_weights
 
 class RegressionModel:
 
     def __init__(self, 
                    X_train,
                    y_train,
-                   model_type, 
-                   metric = "l2", 
+                   model_type = "random_forest", 
+                   obj_func_name = "mse", 
                    verbosity = 0,
                    sample_weight = None,
-                   custom_fobj = None, 
-                   custom_feval = None,
+                   random_seed = None
                 ):
         '''
         Positional Arguements:
@@ -32,12 +25,10 @@ class RegressionModel:
             model_type
         Keyword Arguements:
             sample_weight
-            metric: String. Optional. 'l1' or 'l2'.
+            obj_func_name: String. Optional. 'mae' or 'mse'.
         '''
-        assert model_type in ["random_forest","elastic_net", "lightgbm", "lightgbm_special", "xgboost"]
+        assert model_type in ["random_forest","elastic_net", "lightgbm", "xgboost"]
         # TODO: raise a more appropriate exception (NotImplemented)
-        if (custom_fobj is not None) or (custom_feval is not None):
-            assert model_type == "lightgbm_special", "custom_obj or custom_feval only for lightgbm_special"
 
         self.X_train = X_train
         self.feature_names = X_train.columns.tolist()
@@ -45,19 +36,11 @@ class RegressionModel:
         self.sample_weight = sample_weight
         self.verbosity = verbosity
         self.model_type = model_type
-        self.custom_fobj = custom_fobj
-        self.custom_feval = custom_feval
+        self.obj_func_name = obj_func_name
+        self.random_seed = random_seed
 
-        # NOTE: do this incase it is written differently in other implementations
-        if model_type in ["random_forest", "elastic_net", "xgboost"]:
-            if metric == "l1":
-                self.metric = "mae"
-            elif metric == "l2":
-                self.metric = "mse"
-        elif model_type == "lightgbm":
-            self.metric = "regression_{}".format(metric)
-        elif model_type == "lightgbm_special":
-            self.metric = metric
+        if (model_type == "elastic_net") and (sample_weight is not None):
+            print("sample_weight ignored for elastic_net")
 
     def fit(self, model_params = None):
         if model_params is None:
@@ -67,86 +50,111 @@ class RegressionModel:
 
         if self.model_type == "elastic_net":
             self._prepare_elastic_net_params()
-            self.model = self._fit_elastic_net(self.X_train, self.y_train, self.model_params)
+            self.model = model_utils._fit_elastic_net(self.X_train, self.y_train, 
+                                                        self.model_params)
 
         elif self.model_type == "random_forest":
             self._prepare_random_forest_params()
-            self.model = self._fit_random_forest(self.X_train, self.y_train, self.sample_weight, self.model_params)
+            self.model = model_utils._fit_random_forest(self.X_train, self.y_train, 
+                                                        self.obj_func_name, self.sample_weight, self.model_params)
 
-        elif self.model_type in ["lightgbm", "lightgbm_special"]:
+        elif self.model_type == "lightgbm":
 
             self._prepare_lightgbm_params()
-            self.model = self._fit_lightgbm(self.X_train, self.y_train, self.sample_weight, self.model_params, 
-                                            # todo: two arguments below being inside self.model_params
-                                            self.custom_fobj,
-                                            self.custom_feval)
+            self.model = model_utils._fit_lightgbm(self.X_train, self.y_train, 
+                                                    self.obj_func_name, self.sample_weight, self.model_params)
 
         elif self.model_type == "xgboost":
             self._prepare_xgboost_params()
-            self.model = self._fit_xgboost(self.X_train, self.y_train, self.sample_weight, self.model_params, 
-                                            # todo: argument below being inside self.model_params
-                                            self.metric)
+            self.model = model_utils._fit_xgboost(self.X_train, self.y_train, 
+                                                    self.obj_func_name, self.sample_weight, self.model_params)
+
+    def cross_validate(self, 
+                        train_valid_folds,
+                        eval_func_names = None, 
+                        model_params = None):
+                        
+        if model_params is None:
+            self.model_params = {}
+        else:
+            assert "random_state" not in model_params.keys(), "seed should not be explicitly set within the model_params dictionary"
+            assert "seed" not in model_params.keys(), "seed should not be explicitly set within the model_params dictionary"
+            self.model_params = model_params
+        if eval_func_names is None:
+            eval_func_names = ["mse"]
+        if isinstance(eval_func_names, str):
+            eval_func_names = [eval_func_names]
+
+        if not isinstance(train_valid_folds, list):
+            train_valid_folds = list(train_valid_folds.split(self.X_train))
+
+        if model_params is None:
+            assert hasattr(self, "model_params"), "If model hasn't been fitted, must supply model_params"
+
+        if self.model_type == "elastic_net":
+            self._prepare_elastic_net_params()
+            cv_scores = model_utils._cv_elastic_net(self.X_train, self.y_train, train_valid_folds, 
+                                                    eval_func_names,
+                                                    model_params)
+
+        elif self.model_type == "random_forest":
+            self._prepare_random_forest_params()
+            if hasattr(self, "model"):
+                if hasattr(self.model, "oob_prediction_"):
+                    oob_prediction = self.model.oob_prediction_
+                else:
+                    oob_prediction = None
+            else:
+                oob_prediction = None
+            cv_scores = model_utils._cv_random_forest(self.X_train, self.y_train, train_valid_folds,
+                                                    self.obj_func_name, 
+                                                    eval_func_names,
+                                                    model_params,
+                                                    self.sample_weight,
+                                                    oob_prediction)
+
+
+        elif self.model_type == "lightgbm":
+            # still not working for custom objective function
+            self._prepare_lightgbm_params()
+            cv_scores = model_utils._cv_lightgbm(self.X_train, self.y_train, train_valid_folds, 
+                                                self.obj_func_name,
+                                                eval_func_names,
+                                                model_params,
+                                                self.sample_weight)
+           
+
+        elif self.model_type == "xgboost":
+            self._prepare_xgboost_params()
+            cv_scores = model_utils._cv_xgboost(self.X_train, self.y_train, train_valid_folds, 
+                                                self.obj_func_name,
+                                                eval_func_names,
+                                                model_params,
+                                                self.sample_weight)
+            
+        else:
+            raise Exception("model type {} not supported".format(self.model_type))
+
+        return cv_scores
+
 
     def _prepare_elastic_net_params(self):
         self.model_params["max_iter"] = 10000
-
-    @staticmethod
-    def _fit_elastic_net(X_train, y_train, model_params = None):
-        if model_params is None:
-            model_params = {}
-        model = ElasticNet(**model_params)
-        pipeline = make_pipeline(StandardScaler(), model)
-        pipeline.fit(X = X_train, y = y_train)
-
-        return pipeline
+        self.model_params["random_state"] = self.random_seed
 
     def _prepare_random_forest_params(self):
         self.model_params["n_jobs"] = -1
-        self.model_params["criterion"] = self.metric
         self.model_params["oob_score"] = True
 
         if "n_estimators" not in self.model_params.keys():
             self.model_params["n_estimators"] = 100
 
-    @staticmethod
-    def _fit_random_forest(X_train, y_train, sample_weight = None, model_params = None):
-        if model_params is None:
-            model_params = {}
-
-        model = RandomForestRegressor(**model_params)
-        model.fit(X = X_train, y = y_train, sample_weight = sample_weight)
-        return model
+        self.model_params["random_state"] = self.random_seed
 
     def _prepare_lightgbm_params(self):
         self.model_params["n_jobs"] = -1
 
-        if self.model_type == "lightgbm":
-            self.model_params["objective"] = self.metric
-            
-        if self.model_type == "lightgbm_special":
-            if self.verbosity >= 1:
-                print("Ignoring the set metric {} for lightgbm_special".format(self.metric))
-            if self.sample_weight is not None:
-                if self.verbosity >= 1:
-                    print("Disregarding sample_weights (for mape or mspe) for lightgbm_special")
-                self.sample_weight = None
-
-        self.model_params["metric"] = "None"
-
-    @staticmethod
-    def _fit_lightgbm(X_train, y_train, sample_weight = None, model_params = None, 
-                        custom_fobj = None, custom_feval = None):     
-        if model_params is None:
-            model_params = {}
-
-        d_train = lgb.Dataset(data = X_train, label = y_train, weight = sample_weight)
-            
-        model = lgb.train(params = model_params, 
-                          train_set = d_train, 
-                          fobj = custom_fobj, 
-                          feval = custom_feval)
-
-        return model
+        self.model_params["random_state"] = self.random_seed
 
     def _prepare_xgboost_params(self):
         self.model_params["silent"] = 1
@@ -154,35 +162,21 @@ class RegressionModel:
         if self.sample_weight is not None:
             print("Sample weight not yet supported with the XGBoost model")
             self.sample_weight = None
+        
+        if self.random_seed is None:
+            self.model_params["seed"] = 0
+        else:
+            self.model_params["seed"] = self.random_seed
 
-    @staticmethod
-    def _fit_xgboost(X_train, y_train, sample_weight = None, model_params = None, 
-                        metric = "mse"):
-        if model_params is None:
-            model_params = {}
-
-        if metric == "mae":
-            # NOTE: this probably doesn't work yet
-            obj = _huber_approx_obj
-        if metric == "mse":
-            obj = None
-
-        d_train = xgb.DMatrix(data = X_train, label = y_train, 
-                                weight = sample_weight)
-
-        model = xgb.train(params = model_params, 
-                          dtrain = d_train, 
-                          obj=obj, 
-                          num_boost_round = model_params.get("num_boost_round", 200))
-
-        return model
 
     def predict(self, X_pred):
         if self.model_type == "xgboost":
-            X_pred = xgb.DMatrix(X_pred)
+            X_pred = DMatrix(X_pred)
         #else:
         #    X_pred = copy(X_pred)
         
         predictions = self.model.predict(X_pred)
         
         return predictions
+
+ 

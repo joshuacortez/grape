@@ -6,10 +6,12 @@ import hyperopt
 import scipy.stats
 
 from sklearn.metrics import r2_score, make_scorer
-from sklearn.model_selection import KFold, cross_val_score
+from sklearn.model_selection import KFold
 
 from param_space import parameter_space
 from utils import str_to_dict, linear_penalty_type
+
+RANDOM_SEED_ARGNAMES = ["random_state", "seed"]
 
 class ModelDiagnoser:
     def __init__(self, model, 
@@ -33,76 +35,78 @@ class ModelDiagnoser:
 
         training_preds = self.model.predict(self.model.X_train)
 
-        self.model_diagnostics["training_r_squared"] = r2_score(y_true = self.model.y_train, 
+        self.model_diagnostics["training-r_squared"] = r2_score(y_true = self.model.y_train, 
                                                                 y_pred = training_preds)
         if hasattr(self.model.model, "oob_score_"):
-            self.model_diagnostics["oob_r_squared"] = self.model.model.oob_score_
+            self.model_diagnostics["oob-r_squared"] = self.model.model.oob_score_
+
+
 
         if self.train_valid_folds is not None:
-            cv = self.train_valid_folds.split(self.model.X_train)
-            scoring = make_scorer(r2_score)
-            self.model_diagnostics["cv_r_squared"] = cross_val_score(
-                                                        estimator = self.model,
-                                                        X = self.model.X_train,
-                                                        y = self.model.y_yrain,
-                                                        cv = cv,
-                                                        fit_params = {"sample_weight":self.model.sample_weight},
-                                                        scoring = scoring,
-                                                        n_jobs = -1
-                                                        )
+            model_params = {key:val for key,val in self.model.model_params.items() if key not in RANDOM_SEED_ARGNAMES}
+            cv_scores = self.model.cross_validate(train_valid_folds = self.train_valid_folds,
+                                                  eval_func_names = "r_squared",
+                                                 model_params = model_params)
+            r_squared_mean = cv_scores["cv-r_squared-mean"]
+            r_squared_std = cv_scores["cv-r_squared-std"]
+            if self.model.model_type in ["lightgbm", "xgboost"]:
+                best_idx = np.argmax(r_squared_mean)
+                r_squared_mean = r_squared_mean[best_idx]
+                r_squared_std = r_squared_std[best_idx]
+            
+            self.model_diagnostics["cv-r_squared-mean"] = r_squared_mean
+            self.model_diagnostics["cv-r_squared-std"] = r_squared_std
 
         if (self.X_test is not None) & (self.y_test is not None):
             test_preds = self.model.predict(self.X_test)
-            self.model_diagnostics["test_r_squared"] = r2_score(y_true = self.y_test, y_pred = test_preds)
+            self.model_diagnostics["test-r_squared"] = r2_score(y_true = self.y_test, y_pred = test_preds)
     
-    def plot_actual_vs_predicted(self, X, y):
-        preds = self.model.model.predict(X)
+    # def plot_actual_vs_predicted(self, X, y):
+    #     preds = self.model.model.predict(X)
 
+    #     return preds
 
 class HPODiagnoser:
 
     def __init__(self, hpo):
         self.hpo = hpo
-        self.model_type = self.hpo._model.model_type
-
-        self.df_optimization_summary = pd.DataFrame(self.hpo.optimization_summary)
 
         # find the index of minimum loss
-        min_loss_idx = self.df_optimization_summary["loss"].idxmin()
+        min_loss_idx = self.hpo.hyperopt_summary["loss"].idxmin()
         # get the parameter dictionary from the iteration with the lowest loss
-        best_params_dict =  str_to_dict(self.df_optimization_summary.loc[min_loss_idx,"params"])
+        best_params_dict =  str_to_dict(self.hpo.hyperopt_summary.loc[min_loss_idx,"params"])
         
-        if self.model_type in ["lightgbm", "lightgbm_special"]:
+        if self.hpo.model.model_type == "lightgbm":
             # include number of boosting rounds from hyperparameter optimization
-            best_params_dict["num_iterations"] = self.df_optimization_summary.loc[min_loss_idx,"estimators"]
-        if self.model_type == "xgboost":
-            best_params_dict["num_boost_round"] = self.df_optimization_summary.loc[min_loss_idx,"num_boost_round"]
+            best_params_dict["num_iterations"] = self.hpo.hyperopt_summary.loc[min_loss_idx,"estimators"]
+        if self.hpo.model.model_type == "xgboost":
+            best_params_dict["num_boost_round"] = self.hpo.hyperopt_summary.loc[min_loss_idx,"num_boost_round"]
         self.best_params_dict_ = best_params_dict
-        self.best_loss_ = self.df_optimization_summary.loc[min_loss_idx,"loss"]
+        self.best_loss_ = self.hpo.hyperopt_summary.loc[min_loss_idx,"loss"]
 
     def get_hyperparam_summary(self):
         # Create a new empty dataframe for storing parameters
         columns = list(str_to_dict(
-            self.df_optimization_summary.loc[0, 'params']
+            self.hpo.hyperopt_summary.loc[0, 'params']
         ).keys())
         
         bayes_params_df = pd.DataFrame(
             columns = columns,
-            index = list(range(len(self.df_optimization_summary)))
+            index = list(range(len(self.hpo.hyperopt_summary)))
         )
         # Add the results with each parameter a different column
-        for i, params in enumerate(self.df_optimization_summary['params']):
+        for i, params in enumerate(self.hpo.hyperopt_summary['params']):
             bayes_params_df.loc[i, :] = list(str_to_dict(params).values())
 
-        for colname in self.df_optimization_summary.columns:
+        for colname in self.hpo.hyperopt_summary.columns.tolist():
             if colname != "params":
-                bayes_params_df[colname] = self.df_optimization_summary[colname]
+                bayes_params_df[colname] = self.hpo.hyperopt_summary[colname]
 
         return bayes_params_df
 
     def plot_bayes_hyperparam_density(self, parameter_name, n_samples = 1000):
         bayes_params_df = self.get_hyperparam_summary()
-        parameter_space_dict = parameter_space[self.model_type]
+        parameter_space_dict = parameter_space[self.hpo.model.model_type]
         if parameter_name in parameter_space_dict.keys():
         
             fig, ax = plt.subplots()
@@ -155,10 +159,10 @@ class HPODiagnoser:
     def plot_param_over_iterations(self, parameter_name):
         bayes_params_df = self.get_hyperparam_summary()
         best_iteration = bayes_params_df.loc[bayes_params_df["loss"].idxmin(),"num_iterations"]
-        if parameter_name in bayes_params_df.columns:
+        if parameter_name in bayes_params_df.columns.tolist():
         
             # linear regression of parameter (or loss) over iterations
-            slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(
+            slope, _, _, p_value, _ = scipy.stats.linregress(
                 x = bayes_params_df["num_iterations"], 
                 y = bayes_params_df[parameter_name].astype(np.float)
             )
@@ -179,7 +183,7 @@ class HPODiagnoser:
         figures["loss_over_iterations"] = self.plot_param_over_iterations("loss")
 
         # TODO: implement
-        if self.model_type == "elastic_net":
+        if self.hpo.model.model_type == "elastic_net":
             figures["alpha_over_iterations"] = self.plot_param_over_iterations(parameter_name = "alpha")
             figures["alpha_density"] = self.plot_bayes_hyperparam_density(
                 parameter_name = "alpha", 
@@ -198,9 +202,8 @@ class HPODiagnoser:
             elastic_net_only_df["l1_ratio"].hist(ax = hist_ax)
             figures["l1_ratio_histogram"] = (hist_fig, hist_ax)
 
-        elif self.model_type == "random_forest":
-            for parameter_name in ["n_estimators", "min_samples_split", 
-                                   "min_samples_leaf", "max_features"]:
+        elif self.hpo.model.model_type == "random_forest":
+            for parameter_name in ["min_samples_split", "min_samples_leaf", "max_features"]:
 
                 figures[parameter_name + "_over_iterations"] = self.plot_param_over_iterations(parameter_name = parameter_name)
                 figures[parameter_name + "_density"] = self.plot_bayes_hyperparam_density(
@@ -208,7 +211,7 @@ class HPODiagnoser:
                     n_samples = n_samples
                 )
 
-        elif (self.model_type == "lightgbm") or (self.model_type == "lightgbm_special"):
+        elif self.hpo.model.model_type == "lightgbm":
             for parameter_name in ["num_leaves", "learning_rate", "subsample_for_bin",
                                   "min_child_samples", "reg_alpha", "reg_lambda", "colsample_bytree"]:
                 figures[parameter_name + "_over_iterations"] = self.plot_param_over_iterations(parameter_name = parameter_name)
@@ -217,7 +220,7 @@ class HPODiagnoser:
                     n_samples = n_samples
                 )
 
-        elif self.model_type == "xgboost":
+        elif self.hpo.model.model_type == "xgboost":
             for parameter_name in ["min_child_weight","reg_lambda","colsample_bytree", "gamma"]:
                 figures[parameter_name + "_over_iterations"] = self.plot_param_over_iterations(parameter_name = parameter_name)
                 figures[parameter_name + "_density"] = self.plot_bayes_hyperparam_density(

@@ -16,8 +16,6 @@ parameter_space = {
         )
     },
     "random_forest":{
-        # let n_estimators vary from 100 to 300 for faster training (instead of fixed at 400)
-        'n_estimators':hyperopt.hp.quniform('n_estimators', 100, 300, 20),
         # allow up to 20 (based on auto-sklearn search space) to allow for regularization
         'min_samples_split':hyperopt.hp.quniform('min_samples_split', 2, 20, 1),
         # allow up to 20 (based on auto-sklearn search space) to allow for regularization
@@ -26,11 +24,6 @@ parameter_space = {
         'max_features':hyperopt.hp.uniform('max_features', 0.0, 1.0) 
     },
     "lightgbm":{
-        'min_child_samples': hyperopt.hp.quniform('min_child_samples', 2, 350, 2),
-        'reg_lambda': hyperopt.hp.uniform('reg_lambda', 0.0, 1.0),
-        'colsample_bytree': hyperopt.hp.uniform('colsample_by_tree', 0.0, 1.0)
-    },
-    "lightgbm_special":{
         'min_child_samples': hyperopt.hp.quniform('min_child_samples', 2, 350, 2),
         'reg_lambda': hyperopt.hp.uniform('reg_lambda', 0.0, 1.0),
         'colsample_bytree': hyperopt.hp.uniform('colsample_by_tree', 0.0, 1.0)
