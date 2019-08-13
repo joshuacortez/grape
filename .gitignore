@@ -1,6 +1,3 @@
-desktop.ini
-data
-data/*
-save
-save/*
 __pycache__
+desktop.ini
+scratch

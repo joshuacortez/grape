@@ -1,110 +1,142 @@
-from models.regression_model import RegressionModel
-from models.hyperparameter_optimizer import HyperparameterOptimizer
-from models.params_space import model_params_space_dict
-from preprocessing import Preprocessor
-
-import csv
+from preprocessor import FeaturePreprocessor
+from regression_model import RegressionModel
+from hyperparameter_optimizer import HyperParameterOptimizer
+from diagnostics import HPODiagnoser, ModelDiagnoser
+from interpret import ModelInterpreter
 
 import pandas as pd
-import xgboost as xgb
-import lightgbm as lgb
-
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import ElasticNet, ElasticNetCV
-from sklearn.preprocessing import StandardScaler, LabelEncoder, LabelBinarizer
-
-import hyperopt
-
-import numpy as np
-from sklearn.model_selection import cross_val_score, KFold
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import make_pipeline
-import datetime
-from timeit import default_timer as timer
-
-def test_regression_model():
-		from sklearn.model_selection import train_test_split
-		from sklearn.datasets import load_boston
-		from sklearn.metrics import r2_score
-		RANDOM_SEED =  46257
-		
-		boston = load_boston()
-		df = pd.DataFrame(data = boston["data"])
-		df.columns = ["var_{}".format(col) for col in df.columns]
-		df["target"] = boston["target"]
-		train_df, test_df = train_test_split(df, test_size = 0.2, random_state = RANDOM_SEED)
-		
-		attribute_cols_list = [col for col in df.columns if col != "target"]
-		y_cols_list = ["target"]
-		USE_WEIGHT_SAMPLES = False
-		categorical_vars_list = []
-		
-		for model_type in ["elastic_net", "random_forest", "xgboost", "lightgbm"]:
-				print("fitting baseline {} model".format(model_type))
-				model = RegressionModel(model_type = model_type, random_state = RANDOM_SEED,
-											metric = "l2")
-				model.fit(X_train = train_df.loc[:,attribute_cols_list],
-								 y_train = train_df["target"])
-		
-				predictions = model.predict(X_test = test_df.loc[:,attribute_cols_list])
-				r2 = r2_score(test_df["target"], predictions)
-				print("R-Squared on test set predictions on boston dataset is {}".format(r2))
-
-def test_hyperparameter_optimizer():
-		from sklearn.model_selection import train_test_split
-		from sklearn.datasets import load_boston
-		RANDOM_SEED =  46257
-
-		boston = load_boston()
-		df = pd.DataFrame(data = boston["data"])
-		df.columns = ["var_{}".format(col) for col in df.columns]
-		df["target"] = boston["target"]
-		train_df, test_df = train_test_split(df, test_size = 0.2, random_state = RANDOM_SEED)
-		train_valid_folds = KFold(n_splits = 5, shuffle = True, random_state = RANDOM_SEED)
-
-		attribute_cols_list = [col for col in df.columns if col != "target"]
-		y_cols_list = ["target"]
-		USE_WEIGHT_SAMPLES = False
-		categorical_vars_list = []
-
-		for model_type in ["elastic_net", "random_forest", "lightgbm", "xgboost"]:
-				hpo = HyperparameterOptimizer(model_type = model_type, 
-																			X_train = train_df.loc[:,attribute_cols_list],
-																		 y_train = train_df["target"],
-																		 y_colname = "target",
-																		 metric = "l2",
-																		 random_state = RANDOM_SEED,
-																			train_valid_folds = train_valid_folds,
-																			output_folder = None
-																		 )
-				print(model_type)
-				results = hpo.run_hyperparameter_tuning(parameter_space_dict = model_params_space_dict[model_type], max_evals = 10)
-				results = pd.DataFrame(results)
-				print(results.head())
-
-def test_preprocessing():
-		from sklearn.model_selection import train_test_split
-		from sklearn.datasets import load_boston
-		RANDOM_SEED =  46257
-		
-		boston = load_boston()
-		df = pd.DataFrame(data = boston["data"])
-		df.columns = ["var_{}".format(col) for col in df.columns]
-		df["target"] = boston["target"]
-		train_df, test_df = train_test_split(df, test_size = 0.2, random_state = RANDOM_SEED)
-		
-		
-		attribute_cols_list = [col for col in df.columns if col != "target"]
-		y_cols_list = ["target"]
-		USE_WEIGHT_SAMPLES = False
-		categorical_vars_list = []
-		
-		preprocessor = Preprocessor(model_type = "elastic_net")
-		preprocessed_df = preprocessor.fit_transform(train_df.loc[:,attribute_cols_list], categorical_cols_list=[])
-		print(preprocessed_df.head())
+import matplotlib.pyplot as plt
+from sklearn import datasets
+from sklearn.model_selection import train_test_split, KFold
 
 
-if __name__ == "__main__":
-	test_regression_model()
-	test_hyperparameter_optimizer()
-	test_preprocessing()
+def preprocessor_test():
+    pass
+
+def regression_model_test():
+    X, y = datasets.load_boston(return_X_y = True)
+    X = pd.DataFrame(X)
+
+    model_name = "random_forest"
+    random_seed = 1001
+    obj_func_name = "mse"
+    eval_func_names = ["r_squared", "rmse"]
+    n_estimators = 400
+
+    model = RegressionModel(X_train = X, y_train = y, model_type = model_name, 
+                        obj_func_name = obj_func_name, random_seed = random_seed)
+
+    if model_name == "random_forest":
+        model_params = {"n_estimators":n_estimators}
+    else:
+        model_params = {}
+
+    model.fit(model_params = model_params)
+
+    training_set_preds = model.predict(X)
+    print(training_set_preds)
+
+    cv_metrics = model.cross_validate(train_valid_folds = 10,
+                                    eval_func_names = eval_func_names,
+                                    model_params = model_params)
+    print(cv_metrics)
+
+def hyperparameter_optimizer_test():
+    X, y = datasets.load_boston(return_X_y = True)
+    X = pd.DataFrame(X)
+
+    model_name = "random_forest"
+    random_seed = 1001
+    obj_func_name = "mse"
+    n_estimators = 400
+    total_n_iterations = 50
+
+    base_model = RegressionModel(X_train = X, y_train = y, model_type = model_name, 
+                        obj_func_name = obj_func_name, random_seed = random_seed)
+
+    hpo = HyperParameterOptimizer(verbosity = 1)
+    if model_name == "random_forest":
+        override_params = {"n_estimators":n_estimators}
+    else:
+        override_params = {}
+    hpo.tune_and_fit(model = base_model,
+                    total_n_iterations = total_n_iterations,
+                    train_valid_folds = 10,
+                    override_params = override_params,
+                    use_model_copy = True)
+    tuned_model = hpo.model
+    return tuned_model
+
+def model_diagnoser_test():
+    X, y = datasets.load_boston(return_X_y = True)
+    X = pd.DataFrame(X)
+
+    model_name = "random_forest"
+    random_seed = 1001
+    obj_func_name = "mse"
+    eval_func_names = ["r_squared", "rmse"]
+    n_estimators = 400
+
+    X_train, X_test, y_train, y_test = train_test_split(X ,y, test_size = 0.2, random_state = random_seed)
+
+    model = RegressionModel(X_train = X_train, y_train = y_train, model_type = model_name, 
+                        obj_func_name = obj_func_name, random_seed = random_seed)
+
+    if model_name == "random_forest":
+        model_params = {"n_estimators":n_estimators}
+    else:
+        model_params = {}
+
+    model.fit(model_params = model_params)
+
+    model_diagnoser = ModelDiagnoser(model, 
+                                    train_valid_folds = 10,
+                                    eval_func_names = eval_func_names,
+                                    X_test = X_test,
+                                    y_test = y_test)
+    model_diagnoser.show_all_diagnostics()
+
+def hpo_diagnoser_test():
+    X, y = datasets.load_boston(return_X_y = True)
+    X = pd.DataFrame(X)
+
+    model_name = "random_forest"
+    random_seed = 1001
+    obj_func_name = "mse"
+    n_estimators = 400
+    total_n_iterations = 50
+
+    base_model = RegressionModel(X_train = X, y_train = y, model_type = model_name, 
+                        obj_func_name = obj_func_name, random_seed = random_seed)
+
+    hpo = HyperParameterOptimizer(verbosity = 1)
+    if model_name == "random_forest":
+        override_params = {"n_estimators":n_estimators}
+    else:
+        override_params = {}
+    hpo.tune_and_fit(model = base_model,
+                    total_n_iterations = total_n_iterations,
+                    train_valid_folds = 10,
+                    override_params = override_params,
+                    use_model_copy = True)
+
+    hpo_diagnoser = HPODiagnoser(hpo)
+    figures = hpo_diagnoser.show_all_diagnostics()
+    
+    return figures
+
+def run_all_tests():
+    regression_model_test()
+    print("regression_model_test successful!")
+
+    hyperparameter_optimizer_test()
+    print("hyperparameter_optimizer_test successful!")
+
+    model_diagnoser_test()
+    print("model_diagnoser_test successful!")
+
+    _ = hpo_diagnoser_test()
+    plt.show()
+    print("hpo_diagnoser_test successful!")
+
+    print("all tests successful!")
