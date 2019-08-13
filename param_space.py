@@ -37,3 +37,10 @@ parameter_space = {
         'gamma': hyperopt.hp.uniform("gamma", 0.0, 2.0),
     }
 }
+
+int_params_dict = {
+    "elastic_net":[],
+    "random_forest":["min_samples_split", "min_samples_leaf", "n_estimators"],
+    "lightgbm":['num_leaves', 'subsample_for_bin', 'min_child_samples'],
+    "xgboost":["min_child_weight"],
+}
