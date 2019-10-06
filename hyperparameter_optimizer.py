@@ -38,7 +38,7 @@ class HyperParameterOptimizer:
         The hyperparameters that maximize/minimize the evaluation function
         are chosen
     verbosity : int, optional (default=0)
-        If verbosity >= 2, print after every iteration
+        If verbosity >= 2, print after every iteration of hyperparameter optimization
 
     Attributes
     ----------
