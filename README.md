@@ -12,7 +12,8 @@ GRAPE makes it easy to fit a regression model with hyperparameter optimization. 
     - Grape Uses Hyperopt's tree parzen estimator
 
 # Installation
-- to do
+- `pip install grape-model`
+- If you're having trouble installing some of the dependencies (especially lightgbm, xgboost), try installing them via `conda-forge` before installing GRAPE 
 
 # Sample Usage
 See `sample_grape_use_case.ipynb`
